@@ -1,0 +1,13 @@
+[package]
+name = "zombie-survival/game"
+version = "0.1.0"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+
+[dependencies]
+ByteNet = "ffrostflame/bytenet@0.4.6"
+React = "jsdotlua/react@17.2.1"
+ReactRoblox = "jsdotlua/react-roblox@17.2.1"
+
+[server-dependencies]
+ProfileStore = "lm-loleris/profilestore@1.0.3"

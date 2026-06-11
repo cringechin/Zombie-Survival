@@ -1,0 +1,59 @@
+{
+  "name": "Zombie Survival",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$path": "src/ReplicatedStorage",
+      "Assets": {
+        "$className": "Folder",
+        "Zombies": {
+          "$className": "Folder",
+          "BasicZombie": {
+            "$className": "Folder",
+            "Zombie": {
+              "$className": "Model"
+            }
+          }
+        }
+      },
+      "Packages": {
+        "$path": "Packages"
+      }
+    },
+    "ServerScriptService": {
+      "$path": "src/ServerScriptService",
+      "ServerPackages": {
+        "$path": "ServerPackages"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
+      }
+    },
+    "StarterPack": {
+      "Lightning": {
+        "$className": "Tool",
+        "$properties": {
+          "RequiresHandle": false,
+          "CanBeDropped": false,
+          "ToolTip": "Call down lightning"
+        },
+        "LightningClient": {
+          "$path": "src/StarterPack/Lightning/Lightning.client.lua"
+        }
+      }
+    },
+    "Workspace": {
+      "Arena": {
+        "$className": "Folder"
+      },
+      "Zombies": {
+        "$className": "Folder"
+      },
+      "ZombieSpawns": {
+        "$className": "Folder"
+      }
+    }
+  }
+}

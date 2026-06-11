@@ -1,0 +1,27 @@
+return {
+	Lightning = {
+		DisplayName = "Lightning",
+		Damage = 20,
+		DamagePerUpgrade = 10,
+		MaxUpgradeLevel = 5,
+		UpgradeCosts = {
+			50,
+			100,
+			175,
+			250,
+			350,
+		},
+		Cooldown = 0.35,
+		Range = 35,
+		Radius = 5,
+		AimAssistRadius = 10,
+		ChainRange = 34,
+		ChainTargetsPerUpgrade = 1,
+		BoltSegments = 12,
+		BranchCount = 6,
+		BeamHeight = 1.2,
+		KillKnockback = 82,
+		KnockbackUpward = 34,
+		KnockbackDuration = 0.16,
+	},
+}
