@@ -13,6 +13,18 @@
             "Zombie": {
               "$className": "Model"
             }
+          },
+          "Sprinter": {
+            "$className": "Folder",
+            "Zombie": {
+              "$className": "Model"
+            }
+          },
+          "Tank": {
+            "$className": "Folder",
+            "Zombie": {
+              "$className": "Model"
+            }
           }
         }
       },

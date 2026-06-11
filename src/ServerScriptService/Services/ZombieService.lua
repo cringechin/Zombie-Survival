@@ -5,6 +5,8 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Workspace = game:GetService("Workspace")
 
 local BasicZombie = require(ServerScriptService.Subclasses.NPCs.BasicZombie)
+local Sprinter = require(ServerScriptService.Subclasses.NPCs.Sprinter)
+local Tank = require(ServerScriptService.Subclasses.NPCs.Tank)
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local PlayerDataService = require(ServerScriptService.Services.PlayerDataService)
 
@@ -19,6 +21,7 @@ local liveZombieListDirty = false
 local modelToNpc = {}
 local updateCursor = 1
 local recentlyUsedSpawns = {}
+local zombieSpawnWeights = GameConfig.ZombieSpawnWeights or {}
 
 local function getAlivePlayerRoots()
 	local roots = {}
@@ -40,6 +43,11 @@ local function getSpawnExclusions()
 	local exclusions = {
 		zombiesFolder,
 	}
+
+	local defensesFolder = Workspace:FindFirstChild("Defenses")
+	if defensesFolder then
+		table.insert(exclusions, defensesFolder)
+	end
 
 	for _, player in Players:GetPlayers() do
 		if player.Character then
@@ -266,8 +274,78 @@ function ZombieService.spawnBasicZombie(waveNumber, spawnIndex)
 	return model
 end
 
+local function chooseZombieClass(waveNumber)
+	local weightedPool = {}
+	local totalWeight = 0
+
+	local function addType(unlockWave, weight, constructor)
+		if waveNumber < unlockWave or weight <= 0 then
+			return
+		end
+
+		totalWeight += weight
+		table.insert(weightedPool, {
+			Weight = weight,
+			Constructor = constructor,
+		})
+	end
+
+	addType(1, zombieSpawnWeights.BasicZombie or 100, BasicZombie.new)
+	addType(3, zombieSpawnWeights.Sprinter or 36, Sprinter.new)
+	addType(5, zombieSpawnWeights.Tank or 14, Tank.new)
+
+	if totalWeight <= 0 then
+		return BasicZombie.new
+	end
+
+	local roll = math.random() * totalWeight
+	local cumulative = 0
+
+	for _, entry in weightedPool do
+		cumulative += entry.Weight
+		if roll <= cumulative then
+			return entry.Constructor
+		end
+	end
+
+	return weightedPool[#weightedPool].Constructor
+end
+
+local function spawnZombieFromConstructor(constructor, waveNumber, spawnIndex)
+	if ZombieService.getLiveCount() >= getLiveCap() then
+		return nil
+	end
+
+	local npc = constructor(waveNumber)
+	local model = npc:Spawn(getSpawnCFrame(spawnIndex), zombiesFolder)
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+	liveZombies[npc] = true
+	modelToNpc[model] = npc
+	liveZombieListDirty = true
+
+	humanoid.Died:Connect(function()
+		local creator = humanoid:FindFirstChild("creator")
+		if creator and creator.Value and creator.Value:IsA("Player") then
+			PlayerDataService.addKill(creator.Value)
+		end
+
+		removeZombie(npc)
+		task.delay(3, function()
+			npc:Destroy()
+		end)
+	end)
+
+	model.Destroying:Connect(function()
+		removeZombie(npc)
+	end)
+
+	return model
+end
+
 function ZombieService.spawnZombie(waveNumber, spawnIndex)
-	return ZombieService.spawnBasicZombie(waveNumber, spawnIndex)
+	local constructor = chooseZombieClass(waveNumber)
+	return spawnZombieFromConstructor(constructor, waveNumber, spawnIndex)
 end
 
 function ZombieService.canSpawn()

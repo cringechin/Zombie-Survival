@@ -42,13 +42,8 @@ local function getWaveSize(waveNumber)
 		return GameConfig.StressTestZombieCount
 	end
 
-	local completedWaves = waveNumber - 1
-	local growthExponent = GameConfig.WaveGrowthExponent or 1
-	local waveGrowth = math.floor((completedWaves ^ growthExponent) * GameConfig.ZombiesPerWave)
-	local playerCount = math.max(#Players:GetPlayers(), 1)
-	local playerMultiplier = 1 + ((playerCount - 1) * (GameConfig.WavePlayerScale or 0))
-
-	return math.floor((GameConfig.StartingWaveSize + waveGrowth) * playerMultiplier)
+	local waveMultiplier = GameConfig.WaveSizeMultiplier or 2
+	return math.max(1, math.floor(GameConfig.StartingWaveSize * (waveMultiplier ^ (waveNumber - 1))))
 end
 
 local function getSpawnGroupSize(remainingZombies)
@@ -100,7 +95,7 @@ local function run()
 			while spawnedThisGroup < groupSize and spawned < zombiesToSpawn and ZombieService.canSpawn() do
 				spawned += 1
 				spawnedThisGroup += 1
-				ZombieService.spawnBasicZombie(currentWave, spawned)
+				ZombieService.spawnZombie(currentWave, spawned)
 			end
 
 			task.wait(getSpawnGroupDelay())

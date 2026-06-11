@@ -4,16 +4,20 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local NPC = require(ServerScriptService.Classes.NPC.NPC)
 local NPCRegistry = require(ReplicatedStorage.Shared.NPC.NPCRegistry)
 
-local BasicZombie = {}
-BasicZombie.__index = BasicZombie
-setmetatable(BasicZombie, NPC)
+local Tank = {}
+Tank.__index = Tank
+setmetatable(Tank, NPC)
 
-local BASE_CONFIG = NPCRegistry.BasicZombie
-local RARE_VARIANT_CHANCE = 0.09
+local BASE_CONFIG = NPCRegistry.Tank
+local RARE_VARIANT_CHANCE = 0.11
+
+local function getRegularZombieHealth(waveNumber)
+	return 75 + (waveNumber * 8)
+end
 
 local function getVariantData()
 	if math.random() <= RARE_VARIANT_CHANCE then
-		return "Rare", Color3.fromRGB(118, 230, 118), 0.42
+		return "Rare", Color3.fromRGB(80, 189, 93), 0.55
 	end
 
 	return "Default", nil, nil
@@ -25,11 +29,11 @@ local function buildConfig(waveNumber)
 	return {
 		Class = BASE_CONFIG.Class,
 		Subclass = BASE_CONFIG.Subclass,
-		DisplayName = if variantName == "Rare" then "Rare Zombie" else BASE_CONFIG.DisplayName,
+		DisplayName = if variantName == "Rare" then "Rare Tank" else BASE_CONFIG.DisplayName,
 		AssetPath = BASE_CONFIG.AssetPath,
-		Damage = BASE_CONFIG.Damage + math.floor(waveNumber / 4),
-		WalkSpeed = BASE_CONFIG.WalkSpeed + math.min(waveNumber * 0.08, 3),
-		Health = 75 + (waveNumber * 8),
+		Damage = BASE_CONFIG.Damage + math.floor(waveNumber / 3),
+		WalkSpeed = BASE_CONFIG.WalkSpeed + math.min(waveNumber * 0.05, 2),
+		Health = math.floor(getRegularZombieHealth(waveNumber) * 3.2),
 		AttackRange = BASE_CONFIG.AttackRange,
 		AttackCooldown = BASE_CONFIG.AttackCooldown,
 		AttackWindup = BASE_CONFIG.AttackWindup,
@@ -61,9 +65,9 @@ local function buildConfig(waveNumber)
 	}
 end
 
-function BasicZombie.new(waveNumber)
+function Tank.new(waveNumber)
 	local self = NPC.new(buildConfig(waveNumber))
-	return setmetatable(self, BasicZombie)
+	return setmetatable(self, Tank)
 end
 
-return BasicZombie
+return Tank

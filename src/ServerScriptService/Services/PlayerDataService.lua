@@ -54,9 +54,19 @@ local function getRunData(player)
 			UnlockedWeapons = {
 				Lightning = true,
 			},
+			Defenses = {
+				LightningTurretsPlaced = 0,
+			},
 		}
 		runData[player] = data
 	end
+
+	data.Upgrades = data.Upgrades or {}
+	data.Upgrades.LightningLevel = data.Upgrades.LightningLevel or 0
+	data.UnlockedWeapons = data.UnlockedWeapons or { Lightning = true }
+	data.UnlockedWeapons.Lightning = true
+	data.Defenses = data.Defenses or {}
+	data.Defenses.LightningTurretsPlaced = data.Defenses.LightningTurretsPlaced or 0
 
 	return data
 end
@@ -72,7 +82,14 @@ local function syncLeaderstats(player)
 	getOrCreateInt(leaderstats, GameConfig.LeaderstatNames.BestWave).Value = stats and stats.BestWave or 0
 	getOrCreateInt(leaderstats, GameConfig.LeaderstatNames.Coins).Value = profile and profile.Data.Currency.Coins or 0
 
+	local turretConfig = GameConfig.Defenses and GameConfig.Defenses.LightningTurret
+	local turretBaseCost = turretConfig and turretConfig.Cost or 0
+	local turretCostIncrease = turretConfig and turretConfig.CostIncreasePerTower or 0
+	local placedTurrets = runtime.Defenses.LightningTurretsPlaced
+
 	player:SetAttribute("LightningLevel", runtime.Upgrades.LightningLevel)
+	player:SetAttribute("LightningTurretCount", placedTurrets)
+	player:SetAttribute("LightningTurretNextCost", turretBaseCost + (placedTurrets * turretCostIncrease))
 end
 
 local function loadProfile(player)
@@ -110,7 +127,7 @@ local function loadProfile(player)
 	end
 
 	profiles[player] = profile
-	profile.Data.Currency.Coins = 0
+	profile.Data.Currency.Coins = GameConfig.StartingCoins or 0
 	syncLeaderstats(player)
 end
 
@@ -152,6 +169,25 @@ function PlayerDataService.setLightningLevel(player, level)
 	syncLeaderstats(player)
 
 	return true
+end
+
+function PlayerDataService.getLightningTurretsPlaced(player)
+	return getRunData(player).Defenses.LightningTurretsPlaced
+end
+
+function PlayerDataService.getLightningTurretCost(player)
+	local turretConfig = GameConfig.Defenses and GameConfig.Defenses.LightningTurret
+	local baseCost = turretConfig and turretConfig.Cost or 0
+	local costIncrease = turretConfig and turretConfig.CostIncreasePerTower or 0
+	return baseCost + (PlayerDataService.getLightningTurretsPlaced(player) * costIncrease)
+end
+
+function PlayerDataService.incrementLightningTurretsPlaced(player)
+	local runtime = getRunData(player)
+	runtime.Defenses.LightningTurretsPlaced += 1
+	syncLeaderstats(player)
+
+	return runtime.Defenses.LightningTurretsPlaced
 end
 
 function PlayerDataService.resetRunData(player)

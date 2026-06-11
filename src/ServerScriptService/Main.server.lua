@@ -1,12 +1,14 @@
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local PlayerDataService = require(ServerScriptService.Services.PlayerDataService)
+local DefenseService = require(ServerScriptService.Services.DefenseService)
 local DisasterWeaponService = require(ServerScriptService.Services.DisasterWeaponService)
 local WeaponGrantService = require(ServerScriptService.Services.WeaponGrantService)
 local ZombieService = require(ServerScriptService.Services.ZombieService)
 local WaveService = require(ServerScriptService.Services.WaveService)
 
 PlayerDataService.start()
+DefenseService.start()
 DisasterWeaponService.start()
 WeaponGrantService.start()
 ZombieService.start()

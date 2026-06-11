@@ -24,5 +24,12 @@ return ByteNet.defineNamespace("survival", function()
 				weapon = ByteNet.string,
 			}),
 		}),
+
+		gearPurchaseRequest = ByteNet.definePacket({
+			value = ByteNet.struct({
+				gear = ByteNet.string,
+				position = ByteNet.vec3,
+			}),
+		}),
 	}
 end)

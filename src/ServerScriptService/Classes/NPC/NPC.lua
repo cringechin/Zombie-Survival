@@ -16,6 +16,7 @@ local collisionGroupReady = false
 local HEALTH_PER_SEGMENT = 25
 local MIN_HEALTH_SEGMENTS = 3
 local MAX_HEALTH_SEGMENTS = 16
+local DEFENSES_FOLDER_NAME = "Defenses"
 
 local function setupCollisionGroup()
 	if collisionGroupReady then
@@ -43,8 +44,27 @@ local function getInstanceFromPath(path)
 	return current
 end
 
-local function getAlivePlayers()
-	local alivePlayers = {}
+local function applyVariantTint(model, root, tintColor, tintStrength)
+	if not tintColor or tintStrength == nil then
+		return
+	end
+
+	local blendAlpha = math.clamp(tintStrength, 0, 1)
+	if blendAlpha <= 0 then
+		return
+	end
+
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") and descendant ~= root and descendant.Transparency < 1 then
+			descendant.Color = descendant.Color:Lerp(tintColor, blendAlpha)
+		elseif descendant:IsA("Decal") then
+			descendant.Color3 = descendant.Color3:Lerp(tintColor, blendAlpha * 0.9)
+		end
+	end
+end
+
+local function getAlivePlayerTargets()
+	local aliveTargets = {}
 
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
@@ -52,11 +72,41 @@ local function getAlivePlayers()
 		local root = character and character:FindFirstChild("HumanoidRootPart")
 
 		if humanoid and root and humanoid.Health > 0 then
-			table.insert(alivePlayers, player)
+			table.insert(aliveTargets, {
+				Kind = "Player",
+				Humanoid = humanoid,
+				Root = root,
+			})
 		end
 	end
 
-	return alivePlayers
+	return aliveTargets
+end
+
+local function getAliveDefenseTargets()
+	local defensesFolder = Workspace:FindFirstChild(DEFENSES_FOLDER_NAME)
+	local aliveTargets = {}
+
+	if not defensesFolder then
+		return aliveTargets
+	end
+
+	for _, defense in defensesFolder:GetChildren() do
+		if defense:IsA("Model") then
+			local humanoid = defense:FindFirstChildOfClass("Humanoid")
+			local root = defense.PrimaryPart or defense:FindFirstChild("HumanoidRootPart")
+
+			if humanoid and root and humanoid.Health > 0 then
+				table.insert(aliveTargets, {
+					Kind = "Defense",
+					Humanoid = humanoid,
+					Root = root,
+				})
+			end
+		end
+	end
+
+	return aliveTargets
 end
 
 local function createFallbackModel(config, spawnCFrame)
@@ -306,6 +356,7 @@ function NPC:_createModel(spawnCFrame)
 	end
 
 	model:PivotTo(spawnCFrame)
+	applyVariantTint(model, root, self.Config.VariantTintColor, self.Config.VariantTintStrength)
 
 	local groundPosition = getGroundPosition(spawnCFrame.Position, model)
 	placeModelOnGround(model, groundPosition)
@@ -606,24 +657,29 @@ function NPC:_setupDamageNumbers()
 end
 
 function NPC:_getNearestTarget()
-	local nearestPlayer = nil
+	local nearestTarget = nil
 	local nearestDistance = math.huge
 
-	for _, player in getAlivePlayers() do
-		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-		if root then
-			local distance = (root.Position - self.Root.Position).Magnitude
-			if distance <= self.Config.AggroRange and distance < nearestDistance then
-				nearestDistance = distance
-				nearestPlayer = player
-			end
+	for _, target in getAlivePlayerTargets() do
+		local distance = (target.Root.Position - self.Root.Position).Magnitude
+		if distance <= self.Config.AggroRange and distance < nearestDistance then
+			nearestDistance = distance
+			nearestTarget = target
 		end
 	end
 
-	return nearestPlayer, nearestDistance
+	for _, target in getAliveDefenseTargets() do
+		local distance = (target.Root.Position - self.Root.Position).Magnitude
+		if distance <= self.Config.AggroRange and distance < nearestDistance then
+			nearestDistance = distance
+			nearestTarget = target
+		end
+	end
+
+	return nearestTarget, nearestDistance
 end
 
-function NPC:_tryAttack(targetPlayer, distance)
+function NPC:_tryAttack(target, distance)
 	if not self._canMove then
 		return
 	end
@@ -640,9 +696,9 @@ function NPC:_tryAttack(targetPlayer, distance)
 		return
 	end
 
-	local targetRoot = targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
-	local targetHumanoid = targetPlayer.Character and targetPlayer.Character:FindFirstChildOfClass("Humanoid")
-	if not targetHumanoid then
+	local targetRoot = target and target.Root
+	local targetHumanoid = target and target.Humanoid
+	if not targetHumanoid or not targetRoot then
 		return
 	end
 
@@ -770,10 +826,8 @@ function NPC:_steer(destination, deltaTime, allNpcs)
 end
 
 function NPC:_stepBrain(deltaTime, allNpcs)
-	local targetPlayer, distance = self:_getNearestTarget()
-	local targetRoot = targetPlayer
-		and targetPlayer.Character
-		and targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local target, distance = self:_getNearestTarget()
+	local targetRoot = target and target.Root
 
 	if targetRoot then
 		self:_facePosition(targetRoot.Position)
@@ -798,7 +852,7 @@ function NPC:_stepBrain(deltaTime, allNpcs)
 			self:_steer(destination, deltaTime or self.Config.MovementTick, allNpcs)
 		end
 
-		self:_tryAttack(targetPlayer, distance)
+		self:_tryAttack(target, distance)
 	end
 end
 
@@ -843,6 +897,7 @@ function NPC:Spawn(spawnCFrame, parent)
 
 	self.Model:SetAttribute("Class", self.Config.Class)
 	self.Model:SetAttribute("Subclass", self.Config.Subclass)
+	self.Model:SetAttribute("Variant", self.Config.VariantName or "Default")
 	self.Model:SetAttribute("Damage", self.Config.Damage)
 	self.Model:SetAttribute("WalkSpeed", self.Config.WalkSpeed)
 	self.Model:SetAttribute("Health", self.Humanoid.Health)

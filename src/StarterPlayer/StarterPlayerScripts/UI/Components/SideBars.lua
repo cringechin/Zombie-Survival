@@ -3,7 +3,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 local DisasterWeaponConfig = require(ReplicatedStorage.Shared.Weapons.DisasterWeaponConfig)
+local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Network = require(ReplicatedStorage.Shared.Network.Packets)
+local GearPlacementController = require(script.Parent.Parent.Parent:WaitForChild("GearPlacementController"))
 
 local e = React.createElement
 local localPlayer = Players.LocalPlayer
@@ -355,8 +357,10 @@ local function SideBars()
 	local coinGain, setCoinGain = React.useState(0)
 	local gainToken, setGainToken = React.useState(0)
 	local lightningLevel, setLightningLevel = React.useState(localPlayer:GetAttribute("LightningLevel") or 0)
-	local previousCoinsRef = React.useRef(nil)
 	local lightningConfig = DisasterWeaponConfig.Lightning
+	local turretConfig = GameConfig.Defenses.LightningTurret
+	local turretCost, setTurretCost = React.useState(localPlayer:GetAttribute("LightningTurretNextCost") or turretConfig.Cost)
+	local previousCoinsRef = React.useRef(nil)
 	local nextLightningLevel = math.min(lightningLevel + 1, lightningConfig.MaxUpgradeLevel)
 	local lightningCostValue = if lightningLevel >= lightningConfig.MaxUpgradeLevel
 		then nil
@@ -408,6 +412,12 @@ local function SideBars()
 				setLightningLevel(localPlayer:GetAttribute("LightningLevel") or 0)
 			end)
 		)
+		table.insert(
+			connections,
+			localPlayer:GetAttributeChangedSignal("LightningTurretNextCost"):Connect(function()
+				setTurretCost(localPlayer:GetAttribute("LightningTurretNextCost") or turretConfig.Cost)
+			end)
+		)
 
 		return function()
 			for _, connection in connections do
@@ -448,22 +458,24 @@ local function SideBars()
 
 		Gears = sidePanel("Gears:", "right", {
 			{
+				Label = "Lightning Turret",
+				Cost = turretCost,
+				Glyph = `DMG {turretConfig.Damage}\n+{turretConfig.CostIncreasePerTower} cost`,
+				GlyphTextSize = 17,
+				ArtColor = Color3.fromRGB(70, 190, 255),
+				GlyphColor = Color3.fromRGB(20, 42, 99),
+				LayoutOrder = 1,
+				OnActivated = function()
+					GearPlacementController.beginGearPlacement("LightningTurret")
+				end,
+			},
+			{
 				Label = "Barricade",
 				Cost = 50,
 				Glyph = "Wall",
 				GlyphTextSize = 22,
 				ArtColor = Color3.fromRGB(155, 135, 96),
 				GlyphColor = Color3.fromRGB(38, 28, 18),
-				LayoutOrder = 1,
-				Disabled = true,
-			},
-			{
-				Label = "Auto-Turret",
-				Cost = 135,
-				Glyph = "Turret",
-				GlyphTextSize = 20,
-				ArtColor = Color3.fromRGB(60, 170, 235),
-				GlyphColor = Color3.fromRGB(14, 42, 72),
 				LayoutOrder = 2,
 				Disabled = true,
 			},
