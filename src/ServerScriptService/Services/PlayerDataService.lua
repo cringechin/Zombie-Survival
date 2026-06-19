@@ -50,6 +50,7 @@ local function getRunData(player)
 		data = {
 			Upgrades = {
 				LightningLevel = lightningLevel,
+				MeteorLevel = 0,
 			},
 			UnlockedWeapons = {
 				Lightning = true,
@@ -63,8 +64,10 @@ local function getRunData(player)
 
 	data.Upgrades = data.Upgrades or {}
 	data.Upgrades.LightningLevel = data.Upgrades.LightningLevel or 0
+	data.Upgrades.MeteorLevel = data.Upgrades.MeteorLevel or 0
 	data.UnlockedWeapons = data.UnlockedWeapons or { Lightning = true }
 	data.UnlockedWeapons.Lightning = true
+	data.UnlockedWeapons.Meteor = data.Upgrades.MeteorLevel > 0
 	data.Defenses = data.Defenses or {}
 	data.Defenses.LightningTurretsPlaced = data.Defenses.LightningTurretsPlaced or 0
 
@@ -88,6 +91,8 @@ local function syncLeaderstats(player)
 	local placedTurrets = runtime.Defenses.LightningTurretsPlaced
 
 	player:SetAttribute("LightningLevel", runtime.Upgrades.LightningLevel)
+	player:SetAttribute("MeteorLevel", runtime.Upgrades.MeteorLevel)
+	player:SetAttribute("MeteorUnlocked", runtime.UnlockedWeapons.Meteor)
 	player:SetAttribute("LightningTurretCount", placedTurrets)
 	player:SetAttribute("LightningTurretNextCost", turretBaseCost + (placedTurrets * turretCostIncrease))
 end
@@ -166,6 +171,19 @@ end
 function PlayerDataService.setLightningLevel(player, level)
 	local runtime = getRunData(player)
 	runtime.Upgrades.LightningLevel = level
+	syncLeaderstats(player)
+
+	return true
+end
+
+function PlayerDataService.getMeteorLevel(player)
+	return getRunData(player).Upgrades.MeteorLevel
+end
+
+function PlayerDataService.setMeteorLevel(player, level)
+	local runtime = getRunData(player)
+	runtime.Upgrades.MeteorLevel = level
+	runtime.UnlockedWeapons.Meteor = level > 0
 	syncLeaderstats(player)
 
 	return true

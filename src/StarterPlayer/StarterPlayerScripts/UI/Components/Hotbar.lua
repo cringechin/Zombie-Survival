@@ -125,6 +125,10 @@ local function toolAccent(tool)
 		return Color3.fromRGB(71, 210, 255), "L"
 	end
 
+	if tool.Name == "Meteor" then
+		return Color3.fromRGB(255, 118, 48), "M"
+	end
+
 	return Color3.fromRGB(116, 224, 130), string.sub(tool.Name, 1, 1)
 end
 

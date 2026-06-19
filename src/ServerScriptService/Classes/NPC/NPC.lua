@@ -17,6 +17,7 @@ local HEALTH_PER_SEGMENT = 25
 local MIN_HEALTH_SEGMENTS = 3
 local MAX_HEALTH_SEGMENTS = 16
 local DEFENSES_FOLDER_NAME = "Defenses"
+local DEFAULT_WALK_ANIMATION_ID = "rbxassetid://109063346157381"
 
 local function setupCollisionGroup()
 	if collisionGroupReady then
@@ -306,6 +307,8 @@ function NPC.new(config)
 	self.Humanoid = nil
 	self.Root = nil
 	self.Animator = nil
+	self._walkTrack = nil
+	self._idleTrack = nil
 	self._alive = false
 	self._canMove = false
 	self._isAttacking = false
@@ -314,8 +317,32 @@ function NPC.new(config)
 	self._navigator = nil
 	self._surroundAngle = math.random() * math.pi * 2
 	self._surroundRadius = config.SurroundRadius + (math.random(-10, 10) / 10)
+	self._kiteOrbitDirection = if math.random() < 0.5 then -1 else 1
+	self._movementLockedUntil = 0
 
 	return self
+end
+
+function NPC:_loadAnimationTrack(animationId, priority, looped)
+	if not animationId or animationId == "" or not self.Animator then
+		return nil
+	end
+
+	local animation = Instance.new("Animation")
+	animation.AnimationId = animationId
+
+	local ok, track = pcall(function()
+		return self.Animator:LoadAnimation(animation)
+	end)
+	animation:Destroy()
+
+	if not ok or not track then
+		return nil
+	end
+
+	track.Priority = priority
+	track.Looped = looped
+	return track
 end
 
 function NPC:_getAssetTemplate()
@@ -356,6 +383,9 @@ function NPC:_createModel(spawnCFrame)
 	end
 
 	model:PivotTo(spawnCFrame)
+	if self.Config.ModelScale and self.Config.ModelScale ~= 1 then
+		model:ScaleTo(self.Config.ModelScale)
+	end
 	applyVariantTint(model, root, self.Config.VariantTintColor, self.Config.VariantTintStrength)
 
 	local groundPosition = getGroundPosition(spawnCFrame.Position, model)
@@ -447,15 +477,9 @@ function NPC:_playSpawnAnimation()
 		return
 	end
 
-	local animation = Instance.new("Animation")
-	animation.AnimationId = animationId
+	local track = self:_loadAnimationTrack(animationId, Enum.AnimationPriority.Action, false)
 
-	local ok, track = pcall(function()
-		return self.Animator:LoadAnimation(animation)
-	end)
-
-	if ok and track then
-		track.Priority = Enum.AnimationPriority.Action
+	if track then
 		track:Play(0.1)
 	end
 
@@ -463,9 +487,61 @@ function NPC:_playSpawnAnimation()
 
 	if track then
 		track:Stop(0)
+		track:Destroy()
+	end
+end
+
+function NPC:_playWalkAnimation()
+	if self._walkTrack and self._walkTrack.IsPlaying then
+		return
 	end
 
-	animation:Destroy()
+	self:_stopIdleAnimation()
+
+	if not self._walkTrack then
+		self._walkTrack = self:_loadAnimationTrack(
+			self.Config.WalkAnimationId or DEFAULT_WALK_ANIMATION_ID,
+			Enum.AnimationPriority.Movement,
+			true
+		)
+	end
+
+	if self._walkTrack then
+		self._walkTrack:Play(0.18)
+		self._walkTrack:AdjustSpeed(math.clamp(self.Config.WalkSpeed / 12, 0.75, 1.55))
+	end
+end
+
+function NPC:_stopWalkAnimation()
+	if self._walkTrack and self._walkTrack.IsPlaying then
+		self._walkTrack:Stop(0.12)
+	end
+end
+
+function NPC:_playIdleAnimation()
+	if not self.Config.IdleAnimationId then
+		return
+	end
+
+	if self._idleTrack and self._idleTrack.IsPlaying then
+		return
+	end
+
+	self:_stopWalkAnimation()
+
+	if not self._idleTrack then
+		self._idleTrack = self:_loadAnimationTrack(self.Config.IdleAnimationId, Enum.AnimationPriority.Idle, true)
+	end
+
+	if self._idleTrack then
+		self._idleTrack:Play(0.18)
+	end
+end
+
+function NPC:_stopIdleAnimation()
+	if self._idleTrack and self._idleTrack.IsPlaying then
+		self._idleTrack:Stop(0.12)
+	end
 end
 
 function NPC:_createHealthBar()
@@ -644,11 +720,81 @@ function NPC:_showDamageNumber(damage)
 	end)
 end
 
+function NPC:_flashOnHit()
+	if not self.Model or not self.Model.Parent then
+		return
+	end
+
+	local flashParts = {}
+	for _, descendant in self.Model:GetDescendants() do
+		if descendant:IsA("BasePart") and descendant ~= self.Root and descendant.Transparency < 0.95 then
+			table.insert(flashParts, {
+				Part = descendant,
+				Color = descendant.Color,
+			})
+			descendant.Color = descendant.Color:Lerp(Color3.fromRGB(255, 255, 255), 0.62)
+		end
+	end
+
+	task.delay(0.045, function()
+		for _, entry in flashParts do
+			local part = entry.Part
+			if part.Parent then
+				TweenService:Create(part, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Color = entry.Color,
+				}):Play()
+			end
+		end
+	end)
+end
+
+function NPC:_createDeathBurst()
+	if not self.Root or not self.Root.Parent then
+		return
+	end
+
+	local position = self.Root.Position
+	local burst = Instance.new("Part")
+	burst.Name = `{self.Config.Subclass}_DeathBurst`
+	burst.Anchored = true
+	burst.CanCollide = false
+	burst.CanQuery = false
+	burst.CanTouch = false
+	burst.CastShadow = false
+	burst.Material = Enum.Material.Neon
+	burst.Color = if self.Config.Subclass == "Tank" then Color3.fromRGB(105, 190, 92) else Color3.fromRGB(137, 230, 105)
+	burst.Shape = Enum.PartType.Ball
+	burst.Size = Vector3.new(1.6, 1.6, 1.6)
+	burst.Transparency = 0.2
+	burst.CFrame = CFrame.new(position + Vector3.new(0, 1.2, 0))
+	burst.Parent = Workspace
+
+	local tween = TweenService:Create(burst, TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(5.5, 1.2, 5.5),
+		Transparency = 1,
+	})
+	tween:Play()
+	tween.Completed:Once(function()
+		if burst.Parent then
+			burst:Destroy()
+		end
+	end)
+
+	for _, descendant in self.Model:GetDescendants() do
+		if descendant:IsA("BasePart") and descendant ~= self.Root and descendant.Transparency < 1 then
+			TweenService:Create(descendant, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Transparency = math.min(descendant.Transparency + 0.55, 0.88),
+			}):Play()
+		end
+	end
+end
+
 function NPC:_setupDamageNumbers()
 	local previousHealth = self.Humanoid.Health
 
 	self.Humanoid.HealthChanged:Connect(function(health)
 		if health < previousHealth then
+			self:_flashOnHit()
 			self:_showDamageNumber(previousHealth - health)
 		end
 
@@ -730,6 +876,36 @@ function NPC:_getSurroundPosition(targetRoot)
 	local desiredPosition = targetPosition + offset
 	local groundPosition = getGroundPosition(desiredPosition, self.Model)
 
+	return Vector3.new(desiredPosition.X, groundPosition.Y, desiredPosition.Z)
+end
+
+function NPC:_getKitePosition(targetRoot, distance)
+	local targetPosition = targetRoot.Position
+	local rootPosition = self.Root.Position
+	local fromTarget = flat(rootPosition - targetPosition)
+
+	if fromTarget.Magnitude <= 0.05 then
+		fromTarget = Vector3.new(1, 0, 0)
+	end
+
+	local minRange = self.Config.KiteMinRange or 18
+	local idealRange = self.Config.KiteIdealRange or minRange + 10
+	local maxRange = self.Config.KiteMaxRange or idealRange + 10
+	local desiredDirection = fromTarget.Unit
+
+	if distance >= minRange and distance <= maxRange then
+		local angle = (self.Config.KiteOrbitStep or 0.35) * self._kiteOrbitDirection
+		local cosine = math.cos(angle)
+		local sine = math.sin(angle)
+		desiredDirection = Vector3.new(
+			(desiredDirection.X * cosine) - (desiredDirection.Z * sine),
+			0,
+			(desiredDirection.X * sine) + (desiredDirection.Z * cosine)
+		).Unit
+	end
+
+	local desiredPosition = targetPosition + (desiredDirection * idealRange)
+	local groundPosition = getGroundPosition(desiredPosition, self.Model)
 	return Vector3.new(desiredPosition.X, groundPosition.Y, desiredPosition.Z)
 end
 
@@ -832,7 +1008,8 @@ function NPC:_stepBrain(deltaTime, allNpcs)
 	if targetRoot then
 		self:_facePosition(targetRoot.Position)
 
-		if self._canMove then
+		if self._canMove and os.clock() >= (self._movementLockedUntil or 0) then
+			self:_playWalkAnimation()
 			local destination
 			if GameConfig.LightweightZombieMovement then
 				local targetPosition = getGroundPosition(targetRoot.Position, self.Model)
@@ -845,14 +1022,22 @@ function NPC:_stepBrain(deltaTime, allNpcs)
 					Vector3.new(targetPosition.X + offset.X, targetPosition.Y, targetPosition.Z + offset.Z),
 					self.Model
 				)
+			elseif self.Config.KiteIdealRange then
+				destination = self:_getKitePosition(targetRoot, distance)
 			else
 				destination = self:_getSurroundPosition(targetRoot)
 			end
 
 			self:_steer(destination, deltaTime or self.Config.MovementTick, allNpcs)
+		else
+			self:_stopWalkAnimation()
+			self:_playIdleAnimation()
 		end
 
 		self:_tryAttack(target, distance)
+	else
+		self:_stopWalkAnimation()
+		self:_playIdleAnimation()
 	end
 end
 
@@ -910,6 +1095,9 @@ function NPC:Spawn(spawnCFrame, parent)
 	self:_setupDamageNumbers()
 	self:_setupSmoothFacing()
 	self:_createSpawnDirt(spawnCFrame)
+	self.Humanoid.Died:Connect(function()
+		self:_createDeathBurst()
+	end)
 
 	task.spawn(function()
 		self:_playSpawnAnimation()
@@ -922,6 +1110,7 @@ function NPC:Spawn(spawnCFrame, parent)
 			self.Humanoid.WalkSpeed = self.Config.WalkSpeed
 			self.Humanoid:ChangeState(Enum.HumanoidStateType.Running)
 			self._canMove = true
+			self:_playIdleAnimation()
 			self._navigator = ZombieNavigator.new(self, self.Config)
 			self:_stepBrain()
 			self:_runBrain()
@@ -933,6 +1122,16 @@ end
 
 function NPC:Destroy()
 	self._alive = false
+	self:_stopWalkAnimation()
+	self:_stopIdleAnimation()
+	if self._walkTrack then
+		self._walkTrack:Destroy()
+		self._walkTrack = nil
+	end
+	if self._idleTrack then
+		self._idleTrack:Destroy()
+		self._idleTrack = nil
+	end
 
 	if self.Root then
 		self.Root.Anchored = false

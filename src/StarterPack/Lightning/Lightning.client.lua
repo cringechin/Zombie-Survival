@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local ClientFeedback = require(Players.LocalPlayer:WaitForChild("PlayerScripts"):WaitForChild("ClientFeedback"))
 local Network = require(ReplicatedStorage.Shared.Network.Packets)
 local DisasterWeaponConfig = require(ReplicatedStorage.Shared.Weapons.DisasterWeaponConfig)
 
@@ -14,6 +15,7 @@ local localPlayer = Players.LocalPlayer
 local tool = script.Parent
 local firing = false
 local equipped = false
+local lastLocalFeedbackAt = 0
 
 local function getFlatAimDirection()
 	local camera = Workspace.CurrentCamera
@@ -36,7 +38,7 @@ local function getFlatAimDirection()
 	local character = localPlayer.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root then
-		return nil
+		return nil, nil
 	end
 
 	local flatDirection = Vector3.new(worldPosition.X - root.Position.X, 0, worldPosition.Z - root.Position.Z)
@@ -46,14 +48,14 @@ local function getFlatAimDirection()
 	end
 
 	if flatDirection.Magnitude <= 0.05 then
-		return nil
+		return nil, nil
 	end
 
-	return flatDirection.Unit
+	return flatDirection.Unit, worldPosition
 end
 
 local function castLightning()
-	local direction = getFlatAimDirection()
+	local direction, targetPosition = getFlatAimDirection()
 	if not direction then
 		return
 	end
@@ -64,7 +66,16 @@ local function castLightning()
 	Network.disasterWeaponCast.send({
 		weapon = "Lightning",
 		direction = direction,
+		targetPosition = targetPosition or Vector3.zero,
 	})
+
+	local now = os.clock()
+	if now - lastLocalFeedbackAt > 0.08 then
+		lastLocalFeedbackAt = now
+		ClientFeedback.cameraKick(0.75, 0.13)
+		ClientFeedback.screenFlash(Color3.fromRGB(112, 215, 255), 0.12, 0.9)
+		ClientFeedback.castPulse(Color3.fromRGB(112, 215, 255))
+	end
 end
 
 local function startFiring()

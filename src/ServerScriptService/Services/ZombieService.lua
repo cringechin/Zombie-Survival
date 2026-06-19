@@ -1,19 +1,30 @@
 local Players = game:GetService("Players")
+local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local BasicZombie = require(ServerScriptService.Subclasses.NPCs.BasicZombie)
+local LightningBoss = require(ServerScriptService.Subclasses.NPCs.LightningBoss)
+local LightningMinion = require(ServerScriptService.Subclasses.NPCs.LightningMinion)
 local Sprinter = require(ServerScriptService.Subclasses.NPCs.Sprinter)
 local Tank = require(ServerScriptService.Subclasses.NPCs.Tank)
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
+local Network = require(ReplicatedStorage.Shared.Network.Packets)
 local PlayerDataService = require(ServerScriptService.Services.PlayerDataService)
 
 local ZombieService = {}
 
 local zombiesFolder = Workspace:WaitForChild("Zombies")
 local spawnsFolder = Workspace:WaitForChild("ZombieSpawns")
+local bossLightningVfxEvent = ReplicatedStorage:FindFirstChild("BossLightningVfxEvent")
+if not bossLightningVfxEvent then
+	bossLightningVfxEvent = Instance.new("RemoteEvent")
+	bossLightningVfxEvent.Name = "BossLightningVfxEvent"
+	bossLightningVfxEvent.Parent = ReplicatedStorage
+end
 
 local liveZombies = {}
 local liveZombieList = {}
@@ -22,6 +33,8 @@ local modelToNpc = {}
 local updateCursor = 1
 local recentlyUsedSpawns = {}
 local zombieSpawnWeights = GameConfig.ZombieSpawnWeights or {}
+local activeBoss = nil
+local getLiveCap
 
 local function getAlivePlayerRoots()
 	local roots = {}
@@ -37,6 +50,41 @@ local function getAlivePlayerRoots()
 	end
 
 	return roots
+end
+
+local function getAliveDamageTargets()
+	local targets = {}
+
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+
+		if humanoid and root and humanoid.Health > 0 then
+			table.insert(targets, {
+				Humanoid = humanoid,
+				Root = root,
+			})
+		end
+	end
+
+	local defensesFolder = Workspace:FindFirstChild("Defenses")
+	if defensesFolder then
+		for _, defense in defensesFolder:GetChildren() do
+			if defense:IsA("Model") then
+				local humanoid = defense:FindFirstChildOfClass("Humanoid")
+				local root = defense.PrimaryPart or defense:FindFirstChild("HumanoidRootPart")
+				if humanoid and root and humanoid.Health > 0 then
+					table.insert(targets, {
+						Humanoid = humanoid,
+						Root = root,
+					})
+				end
+			end
+		end
+	end
+
+	return targets
 end
 
 local function getSpawnExclusions()
@@ -111,6 +159,15 @@ local function getGroundPosition(position)
 	return result and result.Position or nil
 end
 
+local function getGroundPositionForEffect(position)
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	raycastParams.FilterDescendantsInstances = getSpawnExclusions()
+
+	local result = Workspace:Raycast(position + Vector3.new(0, 90, 0), Vector3.new(0, -220, 0), raycastParams)
+	return result and result.Position or position
+end
+
 local function isFreeSpawnSpace(position)
 	local overlapParams = OverlapParams.new()
 	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -161,6 +218,21 @@ local function addSpawnJitter(cframe)
 	return cframe + offset
 end
 
+local function getSpawnCFrameNearPosition(position, index, minDistance, maxDistance)
+	for _ = 1, GameConfig.PlayerSpawnAttempts do
+		local angle = math.random() * math.pi * 2
+		local radius = math.random((minDistance or 8) * 10, (maxDistance or 18) * 10) / 10
+		local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+		local groundPosition = getGroundPosition(position + offset)
+
+		if groundPosition and isFreeSpawnSpace(groundPosition) then
+			return CFrame.lookAt(groundPosition + Vector3.new(0, 3, 0), position)
+		end
+	end
+
+	return getSpawnCFrame(index)
+end
+
 local function getSpawnCFrame(index)
 	local playerSpawnCFrame = getPlayerSpawnCFrame()
 	if playerSpawnCFrame then
@@ -182,10 +254,255 @@ local function removeZombie(npc)
 	if npc.Model then
 		modelToNpc[npc.Model] = nil
 	end
+	if activeBoss == npc then
+		activeBoss = nil
+		Network.bossStatus.sendToAll({
+			active = 0,
+			name = "",
+			health = 0,
+			maxHealth = 0,
+		})
+	end
 	liveZombieListDirty = true
 end
 
-local function getLiveCap()
+local function sendBossStatus(npc)
+	if not npc or not npc.Humanoid or npc.Humanoid.Health <= 0 then
+		Network.bossStatus.sendToAll({
+			active = 0,
+			name = "",
+			health = 0,
+			maxHealth = 0,
+		})
+		return
+	end
+
+	Network.bossStatus.sendToAll({
+		active = 1,
+		name = npc.Config.DisplayName or "Boss",
+		health = math.clamp(math.floor(npc.Humanoid.Health + 0.5), 0, 65535),
+		maxHealth = math.clamp(math.floor(npc.Humanoid.MaxHealth + 0.5), 1, 65535),
+	})
+end
+
+local function registerZombie(npc)
+	local model = npc.Model
+	local humanoid = model and model:FindFirstChildOfClass("Humanoid")
+	if not model or not humanoid then
+		return nil
+	end
+
+	liveZombies[npc] = true
+	modelToNpc[model] = npc
+	liveZombieListDirty = true
+
+	humanoid.Died:Connect(function()
+		local creator = humanoid:FindFirstChild("creator")
+		if creator and creator.Value and creator.Value:IsA("Player") then
+			PlayerDataService.addKill(creator.Value)
+		end
+
+		removeZombie(npc)
+		task.delay(3, function()
+			npc:Destroy()
+		end)
+	end)
+
+	model.Destroying:Connect(function()
+		removeZombie(npc)
+	end)
+
+	return model
+end
+
+local function createLightningWarning(position, radius, warningTime)
+	local warning = Instance.new("Part")
+	warning.Name = "LightningStrikeWarning"
+	warning.Anchored = true
+	warning.CanCollide = false
+	warning.CanQuery = false
+	warning.CanTouch = false
+	warning.CastShadow = false
+	warning.Color = Color3.fromRGB(255, 42, 42)
+	warning.Material = Enum.Material.Neon
+	warning.Shape = Enum.PartType.Cylinder
+	warning.Size = Vector3.new(0.12, radius * 2, radius * 2)
+	warning.Transparency = 0.42
+	warning.CFrame = CFrame.new(position + Vector3.new(0, 0.08, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	warning.Parent = Workspace
+
+	local tween = TweenService:Create(
+		warning,
+		TweenInfo.new(warningTime, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut),
+		{
+			Size = Vector3.new(0.16, radius * 2.35, radius * 2.35),
+			Transparency = 0.12,
+		}
+	)
+	tween:Play()
+	Debris:AddItem(warning, warningTime + 0.1)
+
+	for index = 1, 3 do
+		local ring = Instance.new("Part")
+		ring.Name = "LightningWarningRing"
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanQuery = false
+		ring.CanTouch = false
+		ring.CastShadow = false
+		ring.Color = if index == 1 then Color3.fromRGB(255, 55, 55) else Color3.fromRGB(255, 130, 40)
+		ring.Material = Enum.Material.Neon
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Size = Vector3.new(0.1, radius * 0.45, radius * 0.45)
+		ring.Transparency = 0.28
+		ring.CFrame = CFrame.new(position + Vector3.new(0, 0.11 + (index * 0.015), 0)) * CFrame.Angles(
+			0,
+			0,
+			math.rad(90)
+		)
+		ring.Parent = Workspace
+
+		local delayTime = (index - 1) * warningTime * 0.18
+		task.delay(delayTime, function()
+			if not ring.Parent then
+				return
+			end
+
+			local ringTween = TweenService:Create(
+				ring,
+				TweenInfo.new(math.max(warningTime - delayTime, 0.1), Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{
+					Size = Vector3.new(0.12, radius * 2.55, radius * 2.55),
+					Transparency = 1,
+				}
+			)
+			ringTween:Play()
+			ringTween.Completed:Once(function()
+				if ring.Parent then
+					ring:Destroy()
+				end
+			end)
+		end)
+	end
+end
+
+local function createLightningImpact(position, radius)
+	bossLightningVfxEvent:FireAllClients(position)
+end
+
+local function damageTargetsInRadius(position, radius, damage)
+	for _, target in getAliveDamageTargets() do
+		local offset = Vector3.new(target.Root.Position.X - position.X, 0, target.Root.Position.Z - position.Z)
+		if offset.Magnitude <= radius then
+			target.Humanoid:TakeDamage(damage)
+		end
+	end
+end
+
+local function getRandomPlayerTargetPosition()
+	local roots = getAlivePlayerRoots()
+	if #roots == 0 then
+		return nil
+	end
+
+	local root = roots[math.random(1, #roots)]
+	local offset = Vector3.new(math.random(-40, 40) / 10, 0, math.random(-40, 40) / 10)
+	return root.Position + offset
+end
+
+local function castBossLightning(npc, allowExtraStrike)
+	local config = npc.Config.SpecialAttacks
+	local targetPosition = getRandomPlayerTargetPosition()
+	if not targetPosition then
+		return
+	end
+
+	local radius = config.LightningRadius or 8
+	local warningTime = config.LightningWarningTime or 1
+	local impactPosition = getGroundPositionForEffect(targetPosition)
+	npc._movementLockedUntil = os.clock() + warningTime + 0.35
+	if npc.Humanoid then
+		npc.Humanoid.WalkSpeed = 0
+	end
+	if npc._stopWalkAnimation then
+		npc:_stopWalkAnimation()
+	end
+	if npc._playIdleAnimation then
+		npc:_playIdleAnimation()
+	end
+	createLightningWarning(impactPosition, radius, warningTime)
+
+	task.delay(warningTime, function()
+		if not npc.Model or not npc.Model.Parent or not npc.Humanoid or npc.Humanoid.Health <= 0 then
+			return
+		end
+
+		createLightningImpact(impactPosition, radius)
+		damageTargetsInRadius(impactPosition, radius, config.LightningDamage or 30)
+		task.delay(0.25, function()
+			if npc.Humanoid and npc.Humanoid.Health > 0 and os.clock() >= (npc._movementLockedUntil or 0) then
+				npc.Humanoid.WalkSpeed = npc.Config.WalkSpeed
+			end
+		end)
+	end)
+
+	if allowExtraStrike ~= false and math.random() <= (config.LightningExtraStrikeChance or 0) then
+		task.delay(0.28, function()
+			if npc.Model and npc.Model.Parent and npc.Humanoid and npc.Humanoid.Health > 0 then
+				castBossLightning(npc, false)
+			end
+		end)
+	end
+end
+
+local function spawnLightningMinion(waveNumber, spawnCFrame)
+	if ZombieService.getLiveCount() >= getLiveCap() then
+		return nil
+	end
+
+	local npc = LightningMinion.new(waveNumber)
+	npc:Spawn(spawnCFrame, zombiesFolder)
+	return registerZombie(npc)
+end
+
+local function summonBossMinions(npc, waveNumber)
+	local config = npc.Config.SpecialAttacks
+	local count = config.SummonCount or 3
+	local rootPosition = npc.Root and npc.Root.Position
+	if not rootPosition then
+		return
+	end
+
+	for index = 1, count do
+		spawnLightningMinion(waveNumber, getSpawnCFrameNearPosition(rootPosition, index, 10, 24))
+	end
+end
+
+local function runBossAbilities(npc, waveNumber)
+	task.spawn(function()
+		local config = npc.Config.SpecialAttacks
+		local nextLightningAt = os.clock() + 1.8
+		local nextSummonAt = os.clock() + 4
+
+		while npc.Model and npc.Model.Parent and npc.Humanoid and npc.Humanoid.Health > 0 do
+			local now = os.clock()
+
+			if now >= nextLightningAt then
+				castBossLightning(npc, true)
+				nextLightningAt = now + (config.LightningCooldown or 3.2)
+			end
+
+			if now >= nextSummonAt then
+				summonBossMinions(npc, waveNumber)
+				nextSummonAt = now + (config.SummonCooldown or 8)
+			end
+
+			task.wait(0.2)
+		end
+	end)
+end
+
+getLiveCap = function()
 	if GameConfig.StressTestEnabled then
 		return GameConfig.StressTestLiveCap
 	end
@@ -248,30 +565,8 @@ function ZombieService.spawnBasicZombie(waveNumber, spawnIndex)
 	end
 
 	local npc = BasicZombie.new(waveNumber)
-	local model = npc:Spawn(getSpawnCFrame(spawnIndex), zombiesFolder)
-	local humanoid = model:FindFirstChildOfClass("Humanoid")
-
-	liveZombies[npc] = true
-	modelToNpc[model] = npc
-	liveZombieListDirty = true
-
-	humanoid.Died:Connect(function()
-		local creator = humanoid:FindFirstChild("creator")
-		if creator and creator.Value and creator.Value:IsA("Player") then
-			PlayerDataService.addKill(creator.Value)
-		end
-
-		removeZombie(npc)
-		task.delay(3, function()
-			npc:Destroy()
-		end)
-	end)
-
-	model.Destroying:Connect(function()
-		removeZombie(npc)
-	end)
-
-	return model
+	npc:Spawn(getSpawnCFrame(spawnIndex), zombiesFolder)
+	return registerZombie(npc)
 end
 
 local function chooseZombieClass(waveNumber)
@@ -317,35 +612,36 @@ local function spawnZombieFromConstructor(constructor, waveNumber, spawnIndex)
 	end
 
 	local npc = constructor(waveNumber)
-	local model = npc:Spawn(getSpawnCFrame(spawnIndex), zombiesFolder)
-	local humanoid = model:FindFirstChildOfClass("Humanoid")
-
-	liveZombies[npc] = true
-	modelToNpc[model] = npc
-	liveZombieListDirty = true
-
-	humanoid.Died:Connect(function()
-		local creator = humanoid:FindFirstChild("creator")
-		if creator and creator.Value and creator.Value:IsA("Player") then
-			PlayerDataService.addKill(creator.Value)
-		end
-
-		removeZombie(npc)
-		task.delay(3, function()
-			npc:Destroy()
-		end)
-	end)
-
-	model.Destroying:Connect(function()
-		removeZombie(npc)
-	end)
-
-	return model
+	npc:Spawn(getSpawnCFrame(spawnIndex), zombiesFolder)
+	return registerZombie(npc)
 end
 
 function ZombieService.spawnZombie(waveNumber, spawnIndex)
 	local constructor = chooseZombieClass(waveNumber)
 	return spawnZombieFromConstructor(constructor, waveNumber, spawnIndex)
+end
+
+function ZombieService.spawnLightningBoss(waveNumber)
+	if activeBoss and activeBoss.Model and activeBoss.Model.Parent then
+		return activeBoss.Model
+	end
+
+	local npc = LightningBoss.new(waveNumber)
+	npc:Spawn(getSpawnCFrame(1), zombiesFolder)
+	local model = registerZombie(npc)
+	activeBoss = npc
+
+	if npc.Humanoid then
+		sendBossStatus(npc)
+		npc.Humanoid.HealthChanged:Connect(function()
+			if activeBoss == npc then
+				sendBossStatus(npc)
+			end
+		end)
+	end
+
+	runBossAbilities(npc, waveNumber)
+	return model
 end
 
 function ZombieService.canSpawn()
@@ -365,6 +661,49 @@ function ZombieService.getLiveCount()
 	end
 
 	return count
+end
+
+function ZombieService.clearAll()
+	local zombiesToDestroy = {}
+
+	for npc in liveZombies do
+		table.insert(zombiesToDestroy, npc)
+	end
+
+	for _, npc in zombiesToDestroy do
+		removeZombie(npc)
+		npc:Destroy()
+	end
+
+	table.clear(liveZombies)
+	table.clear(liveZombieList)
+	table.clear(modelToNpc)
+	liveZombieListDirty = false
+	activeBoss = nil
+	Network.bossStatus.sendToAll({
+		active = 0,
+		name = "",
+		health = 0,
+		maxHealth = 0,
+	})
+end
+
+function ZombieService.sendBossStatusTo(player)
+	if activeBoss and activeBoss.Humanoid and activeBoss.Humanoid.Health > 0 then
+		Network.bossStatus.sendTo({
+			active = 1,
+			name = activeBoss.Config.DisplayName or "Boss",
+			health = math.clamp(math.floor(activeBoss.Humanoid.Health + 0.5), 0, 65535),
+			maxHealth = math.clamp(math.floor(activeBoss.Humanoid.MaxHealth + 0.5), 1, 65535),
+		}, player)
+	else
+		Network.bossStatus.sendTo({
+			active = 0,
+			name = "",
+			health = 0,
+			maxHealth = 0,
+		}, player)
+	end
 end
 
 function ZombieService.getNpcFromModel(model)

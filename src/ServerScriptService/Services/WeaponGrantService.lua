@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local ServerStorage = game:GetService("ServerStorage")
 local StarterPack = game:GetService("StarterPack")
 
 local WeaponGrantService = {}
@@ -38,7 +39,8 @@ local function cleanupDuplicateTools(player, toolName)
 end
 
 local function grantTool(player, toolName)
-	local template = StarterPack:FindFirstChild(toolName)
+	local weaponTemplates = ServerStorage:FindFirstChild("WeaponTemplates")
+	local template = StarterPack:FindFirstChild(toolName) or (weaponTemplates and weaponTemplates:FindFirstChild(toolName))
 	if not template or not template:IsA("Tool") then
 		return
 	end
@@ -55,9 +57,39 @@ local function grantTool(player, toolName)
 	end
 end
 
+local function removeTool(player, toolName)
+	local containers = {
+		player.Character,
+		player:FindFirstChildOfClass("Backpack"),
+		player:FindFirstChild("StarterGear"),
+	}
+
+	for _, container in containers do
+		if not container then
+			continue
+		end
+
+		for _, child in container:GetChildren() do
+			if child:IsA("Tool") and child.Name == toolName then
+				child:Destroy()
+			end
+		end
+	end
+end
+
+function WeaponGrantService.grantWeapon(player, toolName)
+	grantTool(player, toolName)
+end
+
 local function grantStartingWeapons(player)
 	for _, toolName in STARTING_WEAPONS do
 		grantTool(player, toolName)
+	end
+
+	if player:GetAttribute("MeteorUnlocked") then
+		grantTool(player, "Meteor")
+	else
+		removeTool(player, "Meteor")
 	end
 end
 
@@ -68,6 +100,14 @@ function WeaponGrantService.start()
 		end)
 
 		task.delay(0.25, grantStartingWeapons, player)
+
+		player:GetAttributeChangedSignal("MeteorUnlocked"):Connect(function()
+			if player:GetAttribute("MeteorUnlocked") then
+				grantTool(player, "Meteor")
+			else
+				removeTool(player, "Meteor")
+			end
+		end)
 	end)
 
 	for _, player in Players:GetPlayers() do

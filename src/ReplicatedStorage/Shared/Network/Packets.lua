@@ -12,10 +12,20 @@ return ByteNet.defineNamespace("survival", function()
 			}),
 		}),
 
+		bossStatus = ByteNet.definePacket({
+			value = ByteNet.struct({
+				active = ByteNet.uint8,
+				name = ByteNet.string,
+				health = ByteNet.uint16,
+				maxHealth = ByteNet.uint16,
+			}),
+		}),
+
 		disasterWeaponCast = ByteNet.definePacket({
 			value = ByteNet.struct({
 				weapon = ByteNet.string,
 				direction = ByteNet.vec3,
+				targetPosition = ByteNet.vec3,
 			}),
 		}),
 

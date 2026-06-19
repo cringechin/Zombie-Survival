@@ -357,7 +357,9 @@ local function SideBars()
 	local coinGain, setCoinGain = React.useState(0)
 	local gainToken, setGainToken = React.useState(0)
 	local lightningLevel, setLightningLevel = React.useState(localPlayer:GetAttribute("LightningLevel") or 0)
+	local meteorLevel, setMeteorLevel = React.useState(localPlayer:GetAttribute("MeteorLevel") or 0)
 	local lightningConfig = DisasterWeaponConfig.Lightning
+	local meteorConfig = DisasterWeaponConfig.Meteor
 	local turretConfig = GameConfig.Defenses.LightningTurret
 	local turretCost, setTurretCost = React.useState(localPlayer:GetAttribute("LightningTurretNextCost") or turretConfig.Cost)
 	local previousCoinsRef = React.useRef(nil)
@@ -370,6 +372,19 @@ local function SideBars()
 		else `Lightning Lv {lightningLevel}/5`
 	local lightningDamage = lightningConfig.Damage + (lightningLevel * lightningConfig.DamagePerUpgrade)
 	local lightningChains = lightningLevel * lightningConfig.ChainTargetsPerUpgrade
+	local nextMeteorLevel = math.min(meteorLevel + 1, meteorConfig.MaxUpgradeLevel)
+	local meteorCostValue = if meteorLevel >= meteorConfig.MaxUpgradeLevel
+		then nil
+		else meteorConfig.UpgradeCosts[nextMeteorLevel]
+	local meteorLabel = if meteorLevel >= meteorConfig.MaxUpgradeLevel
+		then "Meteor: MAX"
+		elseif meteorLevel <= 0 then "Buy Meteor"
+		else `Meteor Lv {meteorLevel}/5`
+	local meteorStageConfig = meteorConfig.AirStrikeLevels[math.max(meteorLevel, 4)]
+		or meteorConfig.HandCastLevels[math.max(meteorLevel, 1)]
+	local meteorGlyph = if meteorLevel >= 4
+		then `DMG {meteorStageConfig.Damage}\nFIRE {meteorConfig.FireDamage}`
+		else `DMG {meteorStageConfig.Damage}\nRAD {meteorStageConfig.Radius}`
 
 	React.useEffect(function()
 		local connections = {}
@@ -414,6 +429,12 @@ local function SideBars()
 		)
 		table.insert(
 			connections,
+			localPlayer:GetAttributeChangedSignal("MeteorLevel"):Connect(function()
+				setMeteorLevel(localPlayer:GetAttribute("MeteorLevel") or 0)
+			end)
+		)
+		table.insert(
+			connections,
 			localPlayer:GetAttributeChangedSignal("LightningTurretNextCost"):Connect(function()
 				setTurretCost(localPlayer:GetAttribute("LightningTurretNextCost") or turretConfig.Cost)
 			end)
@@ -445,14 +466,20 @@ local function SideBars()
 				end,
 			},
 			{
-				Label = "Next: Tornado",
-				Cost = 150,
-				Glyph = "Tornado",
+				Label = meteorLabel,
+				Cost = meteorCostValue,
+				Glyph = meteorGlyph,
 				GlyphTextSize = 18,
-				ArtColor = Color3.fromRGB(207, 86, 231),
-				GlyphColor = Color3.fromRGB(30, 42, 52),
+				ArtColor = Color3.fromRGB(255, 121, 49),
+				GlyphColor = Color3.fromRGB(70, 22, 8),
 				LayoutOrder = 2,
-				Disabled = true,
+				OnActivated = function()
+					if meteorLevel < meteorConfig.MaxUpgradeLevel then
+						Network.weaponUpgradeRequest.send({
+							weapon = "Meteor",
+						})
+					end
+				end,
 			},
 		}),
 

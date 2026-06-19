@@ -2,6 +2,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local React = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("React"))
 
+local BossHealthBar = require(script.Parent.BossHealthBar)
 local Hotbar = require(script.Parent.Hotbar)
 local SideBars = require(script.Parent.SideBars)
 local WaveAnnouncement = require(script.Parent.WaveAnnouncement)
@@ -16,6 +17,7 @@ local function HUDApp()
 		ResetOnSpawn = false,
 	}, {
 		WaveAnnouncement = e(WaveAnnouncement),
+		BossHealthBar = e(BossHealthBar),
 		SideBars = e(SideBars),
 		Hotbar = e(Hotbar),
 	})

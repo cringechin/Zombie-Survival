@@ -354,6 +354,62 @@ local function createLightningStrike(startPosition, endPosition)
 	end
 end
 
+local function createTurretSpawnBurst(position)
+	local ring = Instance.new("Part")
+	ring.Name = "TurretSpawnBurst"
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanQuery = false
+	ring.CanTouch = false
+	ring.CastShadow = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = Color3.fromRGB(95, 210, 255)
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.1, 0.6, 0.6)
+	ring.Transparency = 0.1
+	ring.CFrame = CFrame.new(position + Vector3.new(0, 0.08, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Parent = Workspace
+
+	local light = Instance.new("PointLight")
+	light.Name = "TurretSpawnLight"
+	light.Brightness = 2.1
+	light.Color = Color3.fromRGB(95, 210, 255)
+	light.Range = 18
+	light.Parent = ring
+
+	local tween = TweenService:Create(ring, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.12, 9, 9),
+		Transparency = 1,
+	})
+	tween:Play()
+	tween.Completed:Once(function()
+		if ring.Parent then
+			ring:Destroy()
+		end
+	end)
+end
+
+local function pulseTurretHead(head)
+	if not head or not head.Parent then
+		return
+	end
+
+	local originalColor = head.Color
+	TweenService:Create(head, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Color = Color3.fromRGB(190, 245, 255),
+		Size = head.Size * 1.12,
+	}):Play()
+
+	task.delay(0.08, function()
+		if head.Parent then
+			TweenService:Create(head, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Color = originalColor,
+				Size = Vector3.new(1.3, 0.6, 1.3),
+			}):Play()
+		end
+	end)
+end
+
 local function getNearestZombie(position, range)
 	local zombiesFolder = Workspace:FindFirstChild("Zombies")
 	if not zombiesFolder then
@@ -421,6 +477,7 @@ local function runTurretLoop(record)
 		if nearestZombie then
 			local startPosition = root.Position + Vector3.new(0, 2.05, 0)
 			local endPosition = nearestZombie.Root.Position + Vector3.new(0, 1.4, 0)
+			pulseTurretHead(record.Head)
 			createLightningStrike(startPosition, endPosition)
 			ZombieService.damageNpc(nearestZombie.NPC, record.Owner, config.Damage)
 		end
@@ -471,6 +528,18 @@ local function createLightningTurretModel(player, spawnCFrame, config)
 	)
 	emitter.CanCollide = false
 
+	local glow = Instance.new("PointLight")
+	glow.Name = "ChargeGlow"
+	glow.Brightness = 1.2
+	glow.Color = Color3.fromRGB(95, 210, 255)
+	glow.Range = 14
+	glow.Parent = emitter
+
+	TweenService:Create(glow, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
+		Brightness = 2.2,
+		Range = 18,
+	}):Play()
+
 	local humanoid = Instance.new("Humanoid")
 	humanoid.Name = "Humanoid"
 	humanoid.MaxHealth = config.Health
@@ -496,6 +565,7 @@ local function createLightningTurretModel(player, spawnCFrame, config)
 		Humanoid = humanoid,
 		Owner = player,
 		Config = config,
+		Head = emitter,
 		Destroyed = false,
 	}
 
@@ -513,6 +583,7 @@ local function createLightningTurretModel(player, spawnCFrame, config)
 	end)
 
 	task.spawn(runTurretLoop, record)
+	createTurretSpawnBurst(spawnCFrame.Position - Vector3.new(0, 2.05, 0))
 
 	if config.LifeTime and config.LifeTime > 0 then
 		task.delay(config.LifeTime, function()

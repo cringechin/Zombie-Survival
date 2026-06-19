@@ -1,9 +1,11 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local ClientFeedback = require(script.Parent:WaitForChild("ClientFeedback"))
 local GameConfig = require(ReplicatedStorage.Shared.Config.GameConfig)
 local Network = require(ReplicatedStorage.Shared.Network.Packets)
 
@@ -32,6 +34,7 @@ local state = {
 	LastCanPlace = false,
 	HintGui = nil,
 	HintLabel = nil,
+	StartedAt = 0,
 }
 
 local function snapToGrid(position, gridSize)
@@ -132,6 +135,13 @@ local function createHintGui()
 
 	state.HintGui = screenGui
 	state.HintLabel = label
+
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.92
+	scale.Parent = frame
+	TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Scale = 1,
+	}):Play()
 end
 
 local function disconnectPlacementSignals()
@@ -358,11 +368,20 @@ local function updatePlacementPreview()
 	)
 
 	if state.PreviewModel then
-		state.PreviewModel:PivotTo(placementCFrame)
+		local elapsed = os.clock() - state.StartedAt
+		local hoverOffset = Vector3.new(0, math.sin(elapsed * 5.5) * 0.12, 0)
+		local yaw = math.sin(elapsed * 3) * math.rad(2)
+		state.PreviewModel:PivotTo((placementCFrame + hoverOffset) * CFrame.Angles(0, yaw, 0))
 	end
 
 	if state.GridPart then
+		local pulse = 1 + (math.sin((os.clock() - state.StartedAt) * 6) * 0.08)
 		state.GridPart.CFrame = CFrame.new(snappedTarget.X, groundPosition.Y + 0.08, snappedTarget.Z)
+		state.GridPart.Size = Vector3.new(
+			math.max((config.GridSize or 6) - 0.2, 1) * pulse,
+			0.15,
+			math.max((config.GridSize or 6) - 0.2, 1) * pulse
+		)
 	end
 
 	state.LastCanPlace = canPlace
@@ -383,6 +402,8 @@ local function bindPlacementInputs()
 					gear = state.Gear,
 					position = state.LastPlacementRequest,
 				})
+				ClientFeedback.cameraKick(0.15, 0.12, 0.8)
+				ClientFeedback.worldBurst(state.LastPlacementRequest, Color3.fromRGB(95, 215, 255), 8)
 				cancelPlacement()
 			end
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 or input.KeyCode == Enum.KeyCode.Escape then
@@ -417,6 +438,7 @@ function GearPlacementController.beginGearPlacement(gear)
 	state.Active = true
 	state.Gear = gear
 	state.Config = config
+	state.StartedAt = os.clock()
 	state.PreviewModel = createPreviewModel()
 	state.GridPart = createGridPart(config.GridSize or 6)
 	createHintGui()

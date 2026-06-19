@@ -24,4 +24,57 @@ return {
 		KnockbackUpward = 34,
 		KnockbackDuration = 0.16,
 	},
+	Meteor = {
+		DisplayName = "Meteor",
+		MaxUpgradeLevel = 5,
+		UpgradeCosts = {
+			150,
+			225,
+			325,
+			450,
+			650,
+		},
+		Cooldown = 5,
+		HandCooldown = 2,
+		Range = 95,
+		ProjectileSpeed = 115,
+		HandAimAssistRadius = 18,
+		HandCastLevels = {
+			[1] = {
+				Damage = 40,
+				Radius = 10,
+				Scale = 0.12,
+			},
+			[2] = {
+				Damage = 60,
+				Radius = 12,
+				Scale = 0.16,
+			},
+			[3] = {
+				Damage = 80,
+				Radius = 15,
+				Scale = 0.22,
+			},
+		},
+		AirStrikeLevels = {
+			[4] = {
+				Damage = 60,
+				Radius = 40,
+				Scale = 0.95,
+			},
+			[5] = {
+				Damage = 60,
+				Radius = 40,
+				Scale = 1.15,
+			},
+		},
+		AirStrikeHeight = 115,
+		AirStrikeFallTime = 0.9,
+		GroupSearchRadius = 40,
+		FireDamage = 5,
+		FireTickInterval = 1,
+		FireDuration = 5,
+		FireRadius = 40,
+		ImpactLift = 1.5,
+	},
 }

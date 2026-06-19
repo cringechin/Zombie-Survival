@@ -6,6 +6,30 @@
       "$path": "src/ReplicatedStorage",
       "Assets": {
         "$className": "Folder",
+        "Bosses": {
+          "$className": "Folder",
+          "LightningBoss": {
+            "$className": "Folder",
+            "LightningBossZombie": {
+              "$className": "Model"
+            }
+          }
+        },
+        "VFX": {
+          "$className": "Folder",
+          "Bosses": {
+            "$className": "Folder",
+            "LightningVFX": {
+              "$className": "Model"
+            }
+          },
+          "Disasters": {
+            "$className": "Folder",
+            "Meteor": {
+              "$className": "Folder"
+            }
+          }
+        },
         "Zombies": {
           "$className": "Folder",
           "BasicZombie": {
@@ -38,7 +62,26 @@
         "$path": "ServerPackages"
       }
     },
+    "ServerStorage": {
+      "WeaponTemplates": {
+        "$className": "Folder",
+        "Meteor": {
+          "$className": "Tool",
+          "$properties": {
+            "RequiresHandle": false,
+            "CanBeDropped": false,
+            "ToolTip": "Launch a meteor"
+          },
+          "MeteorClient": {
+            "$path": "src/StarterPack/Meteor/Meteor.client.lua"
+          }
+        }
+      }
+    },
     "StarterPlayer": {
+      "$properties": {
+        "EnableMouseLockOption": true
+      },
       "StarterPlayerScripts": {
         "$path": "src/StarterPlayer/StarterPlayerScripts"
       }

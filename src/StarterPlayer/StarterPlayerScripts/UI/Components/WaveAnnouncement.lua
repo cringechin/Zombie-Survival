@@ -12,6 +12,10 @@ local function getAnnouncementText(status, wave, seconds)
 	end
 
 	if status == WaveStatus.Started then
+		if wave == 3 then
+			return "WAVE 3: STORM BRINGER"
+		end
+
 		return `Wave {wave} Has Started`
 	end
 
@@ -22,13 +26,20 @@ local function getAnnouncementText(status, wave, seconds)
 	return ""
 end
 
-local function outlinedText(text, color)
+local function outlinedText(text, color, progress)
+	local pop = math.sin(math.clamp(progress, 0, 1) * math.pi)
+	local eased = 1 - ((1 - progress) * (1 - progress))
+	local transparency = if text == "" then 1 else math.clamp(1 - (eased + (pop * 0.25)), 0, 1)
+
 	return e("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0.5, 0.075),
+		Position = UDim2.fromScale(0.5, 0.055 + (0.02 * eased)),
 		Size = UDim2.new(0.72, 0, 0, 46),
 	}, {
+		Scale = e("UIScale", {
+			Scale = 0.88 + (0.12 * eased) + (0.08 * pop),
+		}),
 		DropShadow = e("TextLabel", {
 			BackgroundTransparency = 1,
 			Font = Enum.Font.GothamBlack,
@@ -38,7 +49,7 @@ local function outlinedText(text, color)
 			TextColor3 = Color3.fromRGB(20, 10, 0),
 			TextScaled = true,
 			TextStrokeTransparency = 1,
-			TextTransparency = 0.25,
+			TextTransparency = math.min(transparency + 0.25, 1),
 		}, {
 			SizeLimit = e("UITextSizeConstraint", {
 				MaxTextSize = 34,
@@ -55,6 +66,7 @@ local function outlinedText(text, color)
 			TextScaled = true,
 			TextStrokeTransparency = 0.12,
 			TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+			TextTransparency = transparency,
 		}, {
 			SizeLimit = e("UITextSizeConstraint", {
 				MaxTextSize = 34,
@@ -70,6 +82,8 @@ local function WaveAnnouncement()
 		wave = 1,
 		seconds = 0,
 	})
+	local token, setToken = React.useState(0)
+	local progress, setProgress = React.useState(1)
 
 	React.useEffect(function()
 		Network.waveStatus.listen(function(data)
@@ -78,15 +92,38 @@ local function WaveAnnouncement()
 				wave = data.wave,
 				seconds = data.seconds,
 			})
+			setToken(function(value)
+				return value + 1
+			end)
 		end)
 	end, {})
+
+	React.useEffect(function()
+		local cancelled = false
+		setProgress(0)
+
+		task.spawn(function()
+			for frameIndex = 1, 18 do
+				if cancelled then
+					return
+				end
+
+				setProgress(frameIndex / 18)
+				task.wait(0.025)
+			end
+		end)
+
+		return function()
+			cancelled = true
+		end
+	end, { token })
 
 	local text = getAnnouncementText(state.status, state.wave, state.seconds)
 	local color = if state.status == WaveStatus.Started
 		then Color3.fromRGB(255, 58, 13)
 		else Color3.fromRGB(255, 143, 0)
 
-	return outlinedText(text, color)
+	return outlinedText(text, color, progress)
 end
 
 return WaveAnnouncement
