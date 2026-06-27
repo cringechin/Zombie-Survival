@@ -1,0 +1,64 @@
+local GameConfig = {}
+
+GameConfig.IntermissionSeconds = 5
+GameConfig.TotalWaves = 8
+GameConfig.BossWave = 8
+GameConfig.VictoryReturnDelay = 15
+GameConfig.TimeBetweenSpawnGroups = 0.85
+GameConfig.TimeBetweenZombiesInGroup = 0.18
+GameConfig.MaxLiveZombies = 80
+GameConfig.MaxLiveZombiesPerPlayer = 80
+
+GameConfig.StartingWaveSize = 25
+GameConfig.WaveSizeMultiplier = 2
+GameConfig.MinSpawnGroupSize = 1
+GameConfig.MaxSpawnGroupSize = 2
+GameConfig.PlayerSpawnMinDistance = 24
+GameConfig.PlayerSpawnMaxDistance = 42
+GameConfig.PlayerSpawnAttempts = 18
+
+GameConfig.StressTestEnabled = false
+GameConfig.StressTestZombieCount = 200
+GameConfig.StressTestLiveCap = 220
+GameConfig.StressTestSpawnGroupSize = 3
+GameConfig.StressTestTimeBetweenSpawnGroups = 0.35
+GameConfig.StressTestMaxLightning = true
+
+GameConfig.LightweightZombieMovement = false
+GameConfig.ZombieUpdatesPerFrame = 75
+GameConfig.ZombieSeparationDistance = 3.5
+GameConfig.ZombieSeparationWeight = 1.6
+GameConfig.ZombieMaxGroundStepHeight = 2.5
+GameConfig.StartingCoins = 5000
+
+GameConfig.Defenses = {
+	LightningTurret = {
+		Cost = 90,
+		CostIncreasePerTower = 50,
+		Health = 220,
+		AttackRange = 36,
+		Damage = 18,
+		FireCooldown = 0.65,
+		LifeTime = 0,
+		SpawnOffset = 9,
+		SpawnAttempts = 8,
+		GridSize = 6,
+		MaxPlacementDistance = 90,
+		SearchRadiusCells = 4,
+	},
+}
+
+GameConfig.ZombieSpawnWeights = {
+	BasicZombie = 100,
+	Sprinter = 36,
+	Tank = 14,
+}
+
+GameConfig.LeaderstatNames = {
+	Wave = "Wave",
+	Kills = "Kills",
+	BestWave = "Best Wave",
+	Coins = "Coins",
+}
+
+return GameConfig

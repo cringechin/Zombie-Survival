@@ -1,9 +1,10 @@
 {
-  "name": "Zombie Survival",
+  "name": "Zombie Survival Gameplay",
+  "servePort": 34872,
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
-      "$path": "gameplay/src/ReplicatedStorage",
+      "$path": "src/ReplicatedStorage",
       "Assets": {
         "$className": "Folder",
         "Bosses": {
@@ -53,16 +54,16 @@
         }
       },
       "Packages": {
-        "$path": "Packages"
+        "$path": "../Packages"
       }
     },
     "ServerScriptService": {
-      "$path": "gameplay/src/ServerScriptService",
+      "$path": "src/ServerScriptService",
       "Runtime": {
-        "$path": "shared/ServerRuntime"
+        "$path": "../shared/ServerRuntime"
       },
       "ServerPackages": {
-        "$path": "ServerPackages"
+        "$path": "../ServerPackages"
       }
     },
     "ServerStorage": {
@@ -76,7 +77,7 @@
             "ToolTip": "Launch a meteor"
           },
           "MeteorClient": {
-            "$path": "gameplay/src/StarterPack/Meteor/Meteor.client.lua"
+            "$path": "src/StarterPack/Meteor/Meteor.client.lua"
           }
         }
       }
@@ -86,7 +87,7 @@
         "EnableMouseLockOption": true
       },
       "StarterPlayerScripts": {
-        "$path": "gameplay/src/StarterPlayer/StarterPlayerScripts"
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
       }
     },
     "StarterPack": {
@@ -98,7 +99,7 @@
           "ToolTip": "Call down lightning"
         },
         "LightningClient": {
-          "$path": "gameplay/src/StarterPack/Lightning/Lightning.client.lua"
+          "$path": "src/StarterPack/Lightning/Lightning.client.lua"
         }
       }
     },

@@ -1,0 +1,68 @@
+{
+  "name": "Zombie Survival Lobby",
+  "servePort": 34873,
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$path": "src/ReplicatedStorage",
+      "Packages": {
+        "$path": "../Packages"
+      }
+    },
+    "ServerScriptService": {
+      "$path": "src/ServerScriptService",
+      "Runtime": {
+        "$path": "../shared/ServerRuntime"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
+      }
+    },
+    "Workspace": {
+      "Arena": {
+        "$className": "Folder"
+      },
+      "Queues": {
+        "$className": "Folder",
+        "Queue": {
+          "$className": "Folder",
+          "InQueue": {
+            "$className": "Folder"
+          },
+          "Model": {
+            "$className": "Model"
+          },
+          "Refs": {
+            "$className": "Folder",
+            "CamPos": {
+              "$className": "Part"
+            },
+            "Enter": {
+              "$className": "Part"
+            },
+            "EnterPos": {
+              "$className": "Part"
+            },
+            "ExitPos": {
+              "$className": "Part"
+            },
+            "UI": {
+              "$className": "Part",
+              "BillboardGui": {
+                "$className": "BillboardGui",
+                "Players": {
+                  "$className": "TextLabel"
+                },
+                "Time": {
+                  "$className": "TextLabel"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

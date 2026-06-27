@@ -1,0 +1,3 @@
+return {
+	LobbyPlaceId = 0,
+}
