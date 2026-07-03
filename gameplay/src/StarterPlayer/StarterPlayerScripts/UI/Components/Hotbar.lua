@@ -76,6 +76,12 @@ local function getTools()
 	collect(backpack)
 
 	table.sort(tools, function(left, right)
+		local leftSlot = left:GetAttribute("LoadoutSlot")
+		local rightSlot = right:GetAttribute("LoadoutSlot")
+		if typeof(leftSlot) == "number" and typeof(rightSlot) == "number" and leftSlot ~= rightSlot then
+			return leftSlot < rightSlot
+		end
+
 		if left.Name == right.Name then
 			return order[left] < order[right]
 		end
@@ -118,6 +124,10 @@ local function toolAccent(tool)
 
 	if tool.Name == "Meteor" then
 		return Color3.fromRGB(255, 118, 48), "M"
+	end
+
+	if tool.Name == "Tornado" then
+		return Color3.fromRGB(184, 229, 232), "T"
 	end
 
 	return Color3.fromRGB(116, 224, 130), string.sub(tool.Name, 1, 1)

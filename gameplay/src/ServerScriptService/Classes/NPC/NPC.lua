@@ -909,6 +909,62 @@ function NPC:ApplyDeathKnockback(direction, baseHorizontal, baseUpward)
 	return true
 end
 
+function NPC:ApplyTornadoRelease(direction, baseHorizontal, baseUpward, duration)
+	if not self.Model or not self.Model.Parent or not self.Root or not self.Humanoid or self.Humanoid.Health <= 0 then
+		return false
+	end
+
+	local horizontalDirection = Vector3.new(direction.X, 0, direction.Z)
+	if horizontalDirection.Magnitude <= 0.05 then
+		horizontalDirection = Vector3.new(1, 0, 0)
+	end
+
+	local releaseDuration = duration or 1.25
+	local releaseToken = (self._tornadoReleaseToken or 0) + 1
+	self._tornadoReleaseToken = releaseToken
+	self._canMove = false
+	self._movementLockedUntil = os.clock() + releaseDuration
+	self:_stopWalkAnimation()
+	self:_stopIdleAnimation()
+
+	self.Humanoid.PlatformStand = true
+	self.Humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+	local velocity = (horizontalDirection.Unit * (baseHorizontal or 72)) + Vector3.new(0, baseUpward or 38, 0)
+	for _, descendant in self.Model:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.Anchored = false
+			descendant.AssemblyLinearVelocity = velocity
+			descendant.AssemblyAngularVelocity = Vector3.new(
+				math.random(-10, 10) / 3,
+				math.random(6, 14) / 3,
+				math.random(-10, 10) / 3
+			)
+		end
+	end
+
+	task.delay(releaseDuration, function()
+		if self._tornadoReleaseToken ~= releaseToken then
+			return
+		end
+
+		if not self._alive or not self.Model or not self.Model.Parent or not self.Humanoid or self.Humanoid.Health <= 0 then
+			return
+		end
+
+		self.Humanoid.PlatformStand = false
+		self.Humanoid.Sit = false
+		self.Humanoid:ChangeState(Enum.HumanoidStateType.Running)
+		self._canMove = true
+		self:_playIdleAnimation()
+		if self._navigator then
+			self._navigator:ForceRepath()
+		end
+	end)
+
+	return true
+end
+
 function NPC:_setupDamageNumbers()
 	local previousHealth = self.Humanoid.Health
 

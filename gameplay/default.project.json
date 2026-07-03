@@ -26,6 +26,7 @@
           },
           "Disasters": {
             "$className": "Folder",
+            "$ignoreUnknownInstances": true,
             "Meteor": {
               "$className": "Folder"
             }
@@ -78,6 +79,17 @@
           },
           "MeteorClient": {
             "$path": "src/StarterPack/Meteor/Meteor.client.lua"
+          }
+        },
+        "Tornado": {
+          "$className": "Tool",
+          "$properties": {
+            "RequiresHandle": false,
+            "CanBeDropped": false,
+            "ToolTip": "Summon a tornado"
+          },
+          "TornadoClient": {
+            "$path": "src/StarterPack/Tornado/Tornado.client.lua"
           }
         }
       }

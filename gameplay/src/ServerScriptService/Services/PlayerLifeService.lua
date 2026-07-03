@@ -5,6 +5,7 @@ local TeleportService = game:GetService("TeleportService")
 
 local GameplayConfig = require(ReplicatedStorage.GameplayConfig)
 local Network = require(ReplicatedStorage.Shared.Network.Packets)
+local PlayerDataService = require(script.Parent.PlayerDataService)
 
 local PlayerLifeService = {}
 PlayerLifeService.Order = 5
@@ -39,23 +40,39 @@ local function loadCharacter(player)
 	player:LoadCharacter()
 end
 
+local function settleCredits(playersToReturn)
+	for _, player in playersToReturn do
+		if player.Parent == Players then
+			PlayerDataService.settleRunCredits(player)
+		end
+	end
+end
+
 local function returnPlayersToLobby(playersToReturn)
 	if #playersToReturn == 0 then
 		return
 	end
 
+	settleCredits(playersToReturn)
+
 	local lobbyPlaceId = GameplayConfig.LobbyPlaceId or 0
 	if lobbyPlaceId > 0 and not RunService:IsStudio() then
-		pcall(function()
+		local ok, err = pcall(function()
 			TeleportService:TeleportAsync(lobbyPlaceId, playersToReturn)
 		end)
-		return
+		if ok then
+			return
+		end
+
+		warn(`Failed to return players to lobby: {err}`)
 	end
 
 	for _, player in playersToReturn do
 		if player.Parent == Players then
-			setDowned(player, false)
-			loadCharacter(player)
+			if not downedPlayers[player] then
+				setDowned(player, false)
+				loadCharacter(player)
+			end
 		end
 	end
 end
@@ -69,6 +86,11 @@ function PlayerLifeService.respawnDownedPlayers()
 			downedPlayers[player] = nil
 		end
 	end
+end
+
+function PlayerLifeService.shouldHoldWaveStartForSoloDowned()
+	local players = Players:GetPlayers()
+	return #players == 1 and downedPlayers[players[1]] == true
 end
 
 function PlayerLifeService.returnAllPlayersToLobby()

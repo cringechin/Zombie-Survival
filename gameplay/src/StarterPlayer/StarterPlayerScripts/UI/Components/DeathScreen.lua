@@ -102,6 +102,7 @@ local function DeathScreen()
 	local spectating, setSpectating = React.useState(false)
 	local spectateName, setSpectateName = React.useState("")
 	local aliveCount, setAliveCount = React.useState(#getAlivePlayers())
+	local creditsEarned, setCreditsEarned = React.useState(localPlayer:GetAttribute("RunCreditsEarned") or 0)
 
 	React.useEffect(function()
 		local effect = Lighting:FindFirstChild("DeathScreenGrayscale")
@@ -146,6 +147,13 @@ local function DeathScreen()
 					setSpectateName("")
 					restoreLocalCamera()
 				end
+			end)
+		)
+
+		table.insert(
+			connections,
+			localPlayer:GetAttributeChangedSignal("RunCreditsEarned"):Connect(function()
+				setCreditsEarned(localPlayer:GetAttribute("RunCreditsEarned") or 0)
 			end)
 		)
 
@@ -220,7 +228,7 @@ local function DeathScreen()
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			BackgroundTransparency = 1,
 			Position = UDim2.fromScale(0.5, 0.48),
-			Size = UDim2.fromOffset(520, 270),
+			Size = UDim2.fromOffset(520, 320),
 			ZIndex = 201,
 		}, {
 			List = e("UIListLayout", {
@@ -235,13 +243,22 @@ local function DeathScreen()
 			}),
 			Sub = shadowText({
 				LayoutOrder = 2,
-				Text = if spectating and spectateName ~= "" then `Spectating {spectateName}` else "Respawns on next wave",
+				Text = if spectating and spectateName ~= ""
+					then `Spectating {spectateName}`
+					elseif aliveCount <= 0 then "Everyone has died"
+					else "Respawns on next wave",
 				TextSize = 22,
 				Size = UDim2.fromOffset(420, 34),
 			}),
+			Credits = shadowText({
+				LayoutOrder = 3,
+				Text = `CR Earned: {creditsEarned}`,
+				TextSize = 26,
+				Size = UDim2.fromOffset(420, 38),
+			}),
 			Buttons = e("Frame", {
 				BackgroundTransparency = 1,
-				LayoutOrder = 3,
+				LayoutOrder = 4,
 				Size = UDim2.fromOffset(452, 110),
 				ZIndex = 204,
 			}, {

@@ -1,3 +1,3 @@
 return {
-	LobbyPlaceId = 0,
+	LobbyPlaceId = 103817724364037,
 }

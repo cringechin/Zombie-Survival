@@ -353,8 +353,14 @@ local function SideBars()
 	local gainToken, setGainToken = React.useState(0)
 	local lightningLevel, setLightningLevel = React.useState(localPlayer:GetAttribute("LightningLevel") or 0)
 	local meteorLevel, setMeteorLevel = React.useState(localPlayer:GetAttribute("MeteorLevel") or 0)
+	local tornadoLevel, setTornadoLevel = React.useState(localPlayer:GetAttribute("TornadoLevel") or 0)
+	local meteorUnlocked, setMeteorUnlocked = React.useState(localPlayer:GetAttribute("MeteorUnlocked") == true)
+	local meteorEquipped, setMeteorEquipped = React.useState(localPlayer:GetAttribute("MeteorEquipped") == true)
+	local tornadoUnlocked, setTornadoUnlocked = React.useState(localPlayer:GetAttribute("TornadoUnlocked") == true)
+	local tornadoEquipped, setTornadoEquipped = React.useState(localPlayer:GetAttribute("TornadoEquipped") == true)
 	local lightningConfig = DisasterWeaponConfig.Lightning
 	local meteorConfig = DisasterWeaponConfig.Meteor
+	local tornadoConfig = DisasterWeaponConfig.Tornado
 	local turretConfig = GameConfig.Defenses.LightningTurret
 	local turretCost, setTurretCost = React.useState(localPlayer:GetAttribute("LightningTurretNextCost") or turretConfig.Cost)
 	local previousCoinsRef = React.useRef(nil)
@@ -368,18 +374,38 @@ local function SideBars()
 	local lightningDamage = lightningConfig.Damage + (lightningLevel * lightningConfig.DamagePerUpgrade)
 	local lightningChains = lightningLevel * lightningConfig.ChainTargetsPerUpgrade
 	local nextMeteorLevel = math.min(meteorLevel + 1, meteorConfig.MaxUpgradeLevel)
-	local meteorCostValue = if meteorLevel >= meteorConfig.MaxUpgradeLevel
+	local meteorDisabled = not meteorUnlocked or not meteorEquipped
+	local meteorCostValue = if meteorDisabled or meteorLevel >= meteorConfig.MaxUpgradeLevel
 		then nil
 		else meteorConfig.UpgradeCosts[nextMeteorLevel]
 	local meteorLabel = if meteorLevel >= meteorConfig.MaxUpgradeLevel
 		then "Meteor: MAX"
-		elseif meteorLevel <= 0 then "Buy Meteor"
+		elseif not meteorUnlocked then "Meteor: LOCKED"
+		elseif not meteorEquipped then "Meteor: LOBBY"
 		else `Meteor Lv {meteorLevel}/5`
 	local meteorStageConfig = meteorConfig.AirStrikeLevels[math.max(meteorLevel, 4)]
 		or meteorConfig.HandCastLevels[math.max(meteorLevel, 1)]
-	local meteorGlyph = if meteorLevel >= 4
+	local meteorGlyph = if not meteorUnlocked or not meteorEquipped
+		then "LOBBY\nSHOP"
+		elseif meteorLevel >= 4
 		then `DMG {meteorStageConfig.Damage}\nFIRE {meteorConfig.FireDamage}`
 		else `DMG {meteorStageConfig.Damage}\nRAD {meteorStageConfig.Radius}`
+	local nextTornadoLevel = math.min(tornadoLevel + 1, tornadoConfig.MaxUpgradeLevel)
+	local tornadoDisabled = not tornadoUnlocked or not tornadoEquipped
+	local tornadoCostValue = if tornadoDisabled or tornadoLevel >= tornadoConfig.MaxUpgradeLevel
+		then nil
+		else tornadoConfig.UpgradeCosts[nextTornadoLevel]
+	local tornadoLabel = if tornadoLevel >= tornadoConfig.MaxUpgradeLevel
+		then "Tornado: MAX"
+		elseif not tornadoUnlocked then "Tornado: LOCKED"
+		elseif not tornadoEquipped then "Tornado: LOBBY"
+		else `Tornado Lv {tornadoLevel}/5`
+	local tornadoDamage = tornadoConfig.Damage + (math.max(tornadoLevel - 1, 0) * tornadoConfig.DamagePerUpgrade)
+	local tornadoGlyph = if not tornadoUnlocked or not tornadoEquipped
+		then "LOBBY\nSHOP"
+		elseif tornadoLevel >= 4
+		then `DMG {tornadoDamage}\nTRACK`
+		else `DMG {tornadoDamage}\nPULL`
 
 	React.useEffect(function()
 		local connections = {}
@@ -430,6 +456,36 @@ local function SideBars()
 		)
 		table.insert(
 			connections,
+			localPlayer:GetAttributeChangedSignal("TornadoLevel"):Connect(function()
+				setTornadoLevel(localPlayer:GetAttribute("TornadoLevel") or 0)
+			end)
+		)
+		table.insert(
+			connections,
+			localPlayer:GetAttributeChangedSignal("MeteorUnlocked"):Connect(function()
+				setMeteorUnlocked(localPlayer:GetAttribute("MeteorUnlocked") == true)
+			end)
+		)
+		table.insert(
+			connections,
+			localPlayer:GetAttributeChangedSignal("TornadoUnlocked"):Connect(function()
+				setTornadoUnlocked(localPlayer:GetAttribute("TornadoUnlocked") == true)
+			end)
+		)
+		table.insert(
+			connections,
+			localPlayer:GetAttributeChangedSignal("MeteorEquipped"):Connect(function()
+				setMeteorEquipped(localPlayer:GetAttribute("MeteorEquipped") == true)
+			end)
+		)
+		table.insert(
+			connections,
+			localPlayer:GetAttributeChangedSignal("TornadoEquipped"):Connect(function()
+				setTornadoEquipped(localPlayer:GetAttribute("TornadoEquipped") == true)
+			end)
+		)
+		table.insert(
+			connections,
 			localPlayer:GetAttributeChangedSignal("LightningTurretNextCost"):Connect(function()
 				setTurretCost(localPlayer:GetAttribute("LightningTurretNextCost") or turretConfig.Cost)
 			end)
@@ -468,10 +524,28 @@ local function SideBars()
 				ArtColor = Color3.fromRGB(255, 121, 49),
 				GlyphColor = Color3.fromRGB(70, 22, 8),
 				LayoutOrder = 2,
+				Disabled = meteorDisabled,
 				OnActivated = function()
-					if meteorLevel < meteorConfig.MaxUpgradeLevel then
+					if not meteorDisabled and meteorLevel < meteorConfig.MaxUpgradeLevel then
 						Network.weaponUpgradeRequest.send({
 							weapon = "Meteor",
+						})
+					end
+				end,
+			},
+			{
+				Label = tornadoLabel,
+				Cost = tornadoCostValue,
+				Glyph = tornadoGlyph,
+				GlyphTextSize = 18,
+				ArtColor = Color3.fromRGB(184, 229, 232),
+				GlyphColor = Color3.fromRGB(24, 86, 92),
+				LayoutOrder = 3,
+				Disabled = tornadoDisabled,
+				OnActivated = function()
+					if not tornadoDisabled and tornadoLevel < tornadoConfig.MaxUpgradeLevel then
+						Network.weaponUpgradeRequest.send({
+							weapon = "Tornado",
 						})
 					end
 				end,

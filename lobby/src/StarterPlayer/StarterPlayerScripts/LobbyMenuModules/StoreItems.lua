@@ -2,19 +2,34 @@ local StoreItems = {}
 
 StoreItems.Items = {
 	{
-		Name = "Starter Medkit",
-		Price = "250 COINS",
-		Description = "Temp item. Start a run with one emergency heal.",
+		Id = "Lightning",
+		Name = "Lightning",
+		Price = "EQUIPPED",
+		Description = "A jolt of lightning.",
+		Image = "rbxasset://textures/particles/sparkles_main.dds",
+		PreviewText = "BOLT",
+		PreviewColor = Color3.fromRGB(40, 130, 170),
+		AccentColor = Color3.fromRGB(128, 224, 255),
 	},
 	{
-		Name = "Storm Crate",
-		Price = "500 COINS",
-		Description = "Temp crate. Future cosmetics and lobby rewards.",
+		Id = "Meteor",
+		Name = "Meteor",
+		Price = "150 CR",
+		Description = "A blazing meteor crashing into the horde.",
+		Image = "rbxasset://textures/particles/fire_main.dds",
+		PreviewText = "METEOR",
+		PreviewColor = Color3.fromRGB(150, 64, 34),
+		AccentColor = Color3.fromRGB(255, 178, 84),
 	},
 	{
-		Name = "Turret Boost",
-		Price = "750 COINS",
-		Description = "Temp boost. Future upgrade for defense builds.",
+		Id = "Tornado",
+		Name = "Tornado",
+		Price = "300 CR",
+		Description = "A fierce tornado sending smaller zombies away.",
+		Image = "rbxasset://textures/particles/smoke_main.dds",
+		PreviewText = "TWIST",
+		PreviewColor = Color3.fromRGB(74, 92, 105),
+		AccentColor = Color3.fromRGB(184, 229, 232),
 	},
 }
 

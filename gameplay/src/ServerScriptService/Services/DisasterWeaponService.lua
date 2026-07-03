@@ -15,9 +15,10 @@ local ZombieService = require(script.Parent.ZombieService)
 local DisasterWeaponService = {}
 DisasterWeaponService.Order = 30
 
-local lastCastTimes = {}
+local lastCastTimesByUserId = {}
 local METEOR_ASSET_PATH = { "Assets", "VFX", "Disasters", "Meteor", "Meteor" }
 local METEOR_VFX_ROOT_PATH = { "Assets", "VFX", "Disasters", "Meteor" }
+local TORNADO_ASSET_PATH = { "Assets", "VFX", "Disasters", "Tornado", "Tornado-01" }
 local LIGHTNING_BOLT_SOUND_ID = "rbxassetid://95495457829413"
 
 local function getEquippedTool(player, weaponName)
@@ -46,6 +47,14 @@ end
 
 local function randomBetween(minValue, maxValue)
 	return minValue + ((maxValue - minValue) * math.random())
+end
+
+local function unitOrZero(vector)
+	if vector.Magnitude <= 0.001 then
+		return Vector3.zero
+	end
+
+	return vector.Unit
 end
 
 local function createBoltSegment(fromPosition, toPosition, thickness, lifetime, color, transparency)
@@ -847,6 +856,329 @@ local function getGroundImpactPosition(player, position)
 	return result and result.Position or position
 end
 
+local function getTornadoAsset()
+	local current = ReplicatedStorage
+	for _, childName in TORNADO_ASSET_PATH do
+		current = findChildCaseInsensitive(current, childName)
+		if not current then
+			return nil
+		end
+	end
+
+	return current
+end
+
+local function prepareTornadoBasePart(part)
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+end
+
+local function activateTornadoEmitter(emitter)
+	emitter.Enabled = true
+
+	local burstCount = emitter:GetAttribute("EmitCount")
+	if typeof(burstCount) ~= "number" then
+		burstCount = emitter:GetAttribute("BurstCount")
+	end
+
+	if typeof(burstCount) == "number" and burstCount > 0 then
+		emitter:Emit(math.floor(burstCount))
+	elseif emitter.Rate <= 0 then
+		emitter:Emit(24)
+	end
+end
+
+local function prepareTornadoVFX(instance)
+	if instance:IsA("BasePart") then
+		prepareTornadoBasePart(instance)
+	elseif instance:IsA("ParticleEmitter") then
+		activateTornadoEmitter(instance)
+	elseif instance:IsA("Trail") or instance:IsA("Beam") then
+		instance.Enabled = true
+	end
+
+	for _, descendant in instance:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			prepareTornadoBasePart(descendant)
+		elseif descendant:IsA("ParticleEmitter") then
+			activateTornadoEmitter(descendant)
+		elseif descendant:IsA("Trail") or descendant:IsA("Beam") then
+			descendant.Enabled = true
+		end
+	end
+end
+
+local function setTornadoVisualCFrame(visual, cframe)
+	if visual:IsA("Model") then
+		visual:PivotTo(cframe)
+	elseif visual:IsA("BasePart") then
+		visual.CFrame = cframe
+	end
+end
+
+local function createFallbackTornadoVisual(position, config)
+	local height = config.Height or 34
+	local radius = config.Radius or 18
+	local holder = Instance.new("Model")
+	holder.Name = "TornadoDisaster"
+	holder.Parent = Workspace
+
+	local funnel = Instance.new("Part")
+	funnel.Name = "TornadoFunnel"
+	funnel.Anchored = true
+	funnel.CanCollide = false
+	funnel.CanQuery = false
+	funnel.CanTouch = false
+	funnel.CastShadow = false
+	funnel.Color = Color3.fromRGB(178, 215, 218)
+	funnel.Material = Enum.Material.ForceField
+	funnel.Shape = Enum.PartType.Cylinder
+	funnel.Size = Vector3.new(radius * 1.1, height, radius * 1.1)
+	funnel.CFrame = CFrame.new(position + Vector3.new(0, height * 0.5, 0))
+	funnel.Transparency = 0.38
+	funnel.Parent = holder
+
+	local light = Instance.new("PointLight")
+	light.Name = "TornadoGlow"
+	light.Brightness = 1.1
+	light.Color = Color3.fromRGB(190, 235, 235)
+	light.Range = radius * 1.8
+	light.Parent = funnel
+
+	for index = 1, 4 do
+		local ring = Instance.new("Part")
+		ring.Name = `TornadoRing{index}`
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanQuery = false
+		ring.CanTouch = false
+		ring.CastShadow = false
+		ring.Color = Color3.fromRGB(220, 240, 242)
+		ring.Material = Enum.Material.Neon
+		ring.Shape = Enum.PartType.Cylinder
+		local ringRadius = radius * (0.42 + index * 0.16)
+		ring.Size = Vector3.new(0.16, ringRadius * 2, ringRadius * 2)
+		ring.CFrame = CFrame.new(position + Vector3.new(0, index * (height / 5), 0)) * CFrame.Angles(0, 0, math.rad(90))
+		ring.Transparency = 0.42
+		ring.Parent = holder
+
+		TweenService:Create(ring, TweenInfo.new(config.Duration or 4, Enum.EasingStyle.Linear), {
+			Orientation = ring.Orientation + Vector3.new(0, 360 * (if index % 2 == 0 then -1 else 1), 0),
+			Transparency = 1,
+		}):Play()
+	end
+
+	TweenService:Create(funnel, TweenInfo.new(config.Duration or 4, Enum.EasingStyle.Sine, Enum.EasingDirection.Out), {
+		Transparency = 1,
+		Size = Vector3.new(radius * 1.65, height * 1.08, radius * 1.65),
+	}):Play()
+
+	Debris:AddItem(holder, (config.Duration or 4) + 0.4)
+	return holder
+end
+
+local function createTornadoVisual(position, config)
+	local template = getTornadoAsset()
+	if not template then
+		return createFallbackTornadoVisual(position, config)
+	end
+
+	local visual = template:Clone()
+	visual.Name = "TornadoDisaster"
+	if visual:IsA("Model") then
+		if config.VFXScale and config.VFXScale ~= 1 then
+			pcall(function()
+				visual:ScaleTo(config.VFXScale)
+			end)
+		end
+		visual:PivotTo(CFrame.new(position))
+	elseif visual:IsA("BasePart") then
+		if config.VFXScale and config.VFXScale ~= 1 then
+			visual.Size *= config.VFXScale
+		end
+		visual.CFrame = CFrame.new(position)
+	end
+
+	visual.Parent = Workspace
+	prepareTornadoVFX(visual)
+	Debris:AddItem(visual, (config.Duration or 4) + 1.5)
+	return visual
+end
+
+local function getTornadoVictims(position, radius)
+	local victims = {}
+
+	for _, candidate in getZombieCandidates() do
+		local root = candidate.Root
+		if not root then
+			continue
+		end
+
+		local offset = position - root.Position
+		local flatOffset = Vector3.new(offset.X, 0, offset.Z)
+		if flatOffset.Magnitude <= radius then
+			table.insert(victims, candidate)
+		end
+	end
+
+	return victims
+end
+
+local function canTornadoDrag(candidate)
+	local humanoid = candidate and candidate.Humanoid
+	return humanoid and humanoid.RigType == Enum.HumanoidRigType.R6
+end
+
+local function applyTornadoPull(candidate, position, config)
+	if not canTornadoDrag(candidate) then
+		return
+	end
+
+	local root = candidate.Root
+	if not root or not root.Parent then
+		return
+	end
+
+	local toCenter = position - root.Position
+	local flatToCenter = Vector3.new(toCenter.X, 0, toCenter.Z)
+	local distance = flatToCenter.Magnitude
+	local inward = unitOrZero(flatToCenter)
+	local tangent = if inward == Vector3.zero then Vector3.zero else Vector3.new(-inward.Z, 0, inward.X)
+	local radius = config.Radius or 16
+	local distanceAlpha = 1 - math.clamp(distance / radius, 0, 1)
+	local holdRadius = config.HoldRadius or 5.5
+	local targetLift = math.clamp((config.Height or 34) * 0.32, 6, 16)
+	local verticalOffset = (position.Y + targetLift) - root.Position.Y
+	local pullScale = if distance <= holdRadius then 0.22 else 0.65 + distanceAlpha
+	local velocity = (inward * (config.PullStrength or 62) * pullScale)
+		+ (tangent * (config.SwirlStrength or 44) * (0.4 + distanceAlpha))
+		+ Vector3.new(0, math.clamp(verticalOffset * 5, 8, config.LiftStrength or 24), 0)
+
+	root.AssemblyLinearVelocity = root.AssemblyLinearVelocity:Lerp(velocity, 0.55)
+	root.AssemblyAngularVelocity = Vector3.new(0, 8 + (distanceAlpha * 12), 0)
+end
+
+local function releaseTornadoVictim(candidate, position, config)
+	if not canTornadoDrag(candidate) then
+		return
+	end
+
+	local root = candidate.Root
+	if not root or not root.Parent or candidate.Humanoid.Health <= 0 then
+		return
+	end
+
+	local away = root.Position - position
+	local flatAway = Vector3.new(away.X, 0, away.Z)
+	local fallbackDirection = unitOrZero(Vector3.new(math.random() - 0.5, 0, math.random() - 0.5))
+	if fallbackDirection == Vector3.zero then
+		fallbackDirection = Vector3.new(1, 0, 0)
+	end
+	local direction = if flatAway.Magnitude > 0.05 then flatAway.Unit else fallbackDirection
+	local velocity = (direction * (config.ReleaseHorizontal or 72)) + Vector3.new(0, config.ReleaseUpward or 38, 0)
+
+	if candidate.NPC.ApplyTornadoRelease then
+		candidate.NPC:ApplyTornadoRelease(direction, config.ReleaseHorizontal, config.ReleaseUpward, config.ReleaseRagdollDuration)
+	else
+		root.AssemblyLinearVelocity = velocity
+	end
+end
+
+local function damageAndPullTornadoVictims(player, position, config, damage, captured)
+	local radius = config.Radius or 18
+
+	for _, candidate in getTornadoVictims(position, radius) do
+		ZombieService.damageNpc(candidate.NPC, player, damage)
+		if canTornadoDrag(candidate) and not GameConfig.LightweightZombieMovement then
+			captured[candidate.Root] = candidate
+			applyTornadoPull(candidate, position, config)
+		end
+	end
+end
+
+local function findTornadoTrackingTarget(position, config)
+	local bestCandidate = nil
+	local bestDistance = config.TrackingRange or 55
+
+	for _, candidate in getZombieCandidates() do
+		local root = candidate.Root
+		if not root then
+			continue
+		end
+
+		local flatOffset = Vector3.new(root.Position.X - position.X, 0, root.Position.Z - position.Z)
+		local distance = flatOffset.Magnitude
+		if distance < bestDistance then
+			bestDistance = distance
+			bestCandidate = candidate
+		end
+	end
+
+	return bestCandidate
+end
+
+local function runTornadoProjectile(player, startPosition, direction, config, tornadoLevel)
+	local visual = createTornadoVisual(startPosition, config)
+	local position = startPosition
+	local travelDirection = direction
+	local damage = (config.Damage or 10) + (math.max(tornadoLevel - 1, 0) * (config.DamagePerUpgrade or 0))
+	local expireAt = os.clock() + (config.Duration or 4.2)
+	local nextDamageAt = 0
+	local nextRetargetAt = 0
+	local captured = {}
+
+	while os.clock() < expireAt do
+		local deltaTime = RunService.Heartbeat:Wait()
+		local now = os.clock()
+		local speed = config.ProjectileSpeed or 32
+
+		if tornadoLevel >= 4 and now >= nextRetargetAt then
+			nextRetargetAt = now + (config.TrackingRetargetInterval or 0.35)
+			local target = findTornadoTrackingTarget(position, config)
+			if target and target.Root then
+				local toTarget = Vector3.new(target.Root.Position.X - position.X, 0, target.Root.Position.Z - position.Z)
+				local targetDirection = unitOrZero(toTarget)
+				if targetDirection ~= Vector3.zero then
+					travelDirection = unitOrZero(travelDirection:Lerp(targetDirection, if tornadoLevel >= 5 then 0.72 else 0.48))
+				end
+			end
+		end
+
+		if tornadoLevel >= 4 then
+			speed = config.TrackingSpeed or speed
+		end
+
+		position += travelDirection * speed * deltaTime
+		position = getGroundImpactPosition(player, position) + Vector3.new(0, 0.35, 0)
+		setTornadoVisualCFrame(visual, CFrame.new(position, position + travelDirection))
+
+		if now >= nextDamageAt then
+			nextDamageAt = now + (config.TickInterval or 0.35)
+			damageAndPullTornadoVictims(player, position, config, damage, captured)
+		elseif not GameConfig.LightweightZombieMovement then
+			for _, candidate in getTornadoVictims(position, config.Radius or 16) do
+				if canTornadoDrag(candidate) then
+					captured[candidate.Root] = candidate
+					applyTornadoPull(candidate, position, config)
+				end
+			end
+		end
+	end
+
+	for root, candidate in captured do
+		if root and root.Parent then
+			releaseTornadoVictim(candidate, position, config)
+		end
+	end
+
+	if visual and visual.Parent then
+		visual:Destroy()
+	end
+end
+
 local function createMeteorFire(player, position, config, meteorScale)
 	local groundFireScale = math.clamp((config.FireRadius / 12) * (1.65 + ((meteorScale or 1) * 2.2)), 4, 18)
 	local playedGroundFireVFX = playMeteorNamedVFX("GroundFire", position + Vector3.new(0, 0.05, 0), {
@@ -986,6 +1318,10 @@ local function upgradeMeteor(player)
 	local config = DisasterWeaponConfig.Meteor
 	local currentLevel = PlayerDataService.getMeteorLevel(player)
 
+	if not PlayerDataService.hasUnlockedWeapon(player, "Meteor") or not PlayerDataService.hasEquippedWeapon(player, "Meteor") then
+		return
+	end
+
 	if currentLevel >= config.MaxUpgradeLevel then
 		return
 	end
@@ -1004,33 +1340,63 @@ local function upgradeMeteor(player)
 	WeaponGrantService.grantWeapon(player, "Meteor")
 
 	-- Let the player cast immediately after upgrading into stage 4/5.
-	local playerCastTimes = lastCastTimes[player]
+	local playerCastTimes = lastCastTimesByUserId[player.UserId]
 	if not playerCastTimes then
 		playerCastTimes = {}
-		lastCastTimes[player] = playerCastTimes
+		lastCastTimesByUserId[player.UserId] = playerCastTimes
 	end
 	playerCastTimes.Meteor = 0
 end
 
-local function canCast(player, weaponName, config, cooldownOverride)
-	if not getEquippedTool(player, weaponName) then
-		return false
+local function upgradeTornado(player)
+	local config = DisasterWeaponConfig.Tornado
+	local currentLevel = PlayerDataService.getTornadoLevel(player)
+
+	if not PlayerDataService.hasUnlockedWeapon(player, "Tornado") or not PlayerDataService.hasEquippedWeapon(player, "Tornado") then
+		return
 	end
 
-	local playerCastTimes = lastCastTimes[player]
+	if currentLevel >= config.MaxUpgradeLevel then
+		return
+	end
+
+	local nextLevel = currentLevel + 1
+	local cost = config.UpgradeCosts[nextLevel]
+	if not cost then
+		return
+	end
+
+	if not PlayerDataService.spendCoins(player, cost) then
+		return
+	end
+
+	PlayerDataService.setTornadoLevel(player, nextLevel)
+	WeaponGrantService.grantWeapon(player, "Tornado")
+end
+
+local function canCast(player, weaponName, config, cooldownOverride)
+	local tool = getEquippedTool(player, weaponName)
+	if not tool then
+		return false, nil
+	end
+
+	local playerCastTimes = lastCastTimesByUserId[player.UserId]
 	if not playerCastTimes then
 		playerCastTimes = {}
-		lastCastTimes[player] = playerCastTimes
+		lastCastTimesByUserId[player.UserId] = playerCastTimes
 	end
 
 	local lastCastTime = playerCastTimes[weaponName] or 0
 	local cooldown = cooldownOverride or config.Cooldown
-	if os.clock() - lastCastTime < cooldown then
-		return false
+	local now = os.clock()
+	if now - lastCastTime < cooldown then
+		return false, nil
 	end
 
-	playerCastTimes[weaponName] = os.clock()
-	return true
+	playerCastTimes[weaponName] = now
+	tool:SetAttribute("CooldownDuration", cooldown)
+	tool:SetAttribute("CooldownEndsAt", now + cooldown)
+	return true, tool
 end
 
 local function castLightning(player, direction)
@@ -1153,6 +1519,10 @@ end
 local function castMeteor(player, direction, targetPosition)
 	local config = DisasterWeaponConfig.Meteor
 	local meteorLevel = PlayerDataService.getMeteorLevel(player)
+	if not PlayerDataService.hasUnlockedWeapon(player, "Meteor") or not PlayerDataService.hasEquippedWeapon(player, "Meteor") then
+		return
+	end
+
 	if meteorLevel <= 0 then
 		return
 	end
@@ -1183,6 +1553,36 @@ local function castMeteor(player, direction, targetPosition)
 	end
 end
 
+local function castTornado(player, direction, targetPosition)
+	local config = DisasterWeaponConfig.Tornado
+	local tornadoLevel = math.max(PlayerDataService.getTornadoLevel(player), 1)
+
+	if not getEquippedTool(player, "Tornado") then
+		return
+	end
+
+	if not canCast(player, "Tornado", config) then
+		return
+	end
+
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+
+	local flatDirection = Vector3.new(direction.X, 0, direction.Z)
+	if flatDirection.Magnitude <= 0.05 then
+		return
+	end
+
+	flatDirection = flatDirection.Unit
+	local handPosition = getHandPosition(character, root)
+	local startPosition = getGroundImpactPosition(player, handPosition + (flatDirection * 5)) + Vector3.new(0, 0.35, 0)
+
+	task.spawn(runTornadoProjectile, player, startPosition, flatDirection, config, tornadoLevel)
+end
+
 function DisasterWeaponService.start()
 	Network.disasterWeaponCast.listen(function(data, player)
 		if typeof(data) ~= "table" or typeof(player) ~= "Instance" or not player:IsA("Player") then
@@ -1193,6 +1593,8 @@ function DisasterWeaponService.start()
 			castLightning(player, data.direction)
 		elseif data.weapon == "Meteor" and typeof(data.direction) == "Vector3" then
 			castMeteor(player, data.direction, data.targetPosition)
+		elseif data.weapon == "Tornado" and typeof(data.direction) == "Vector3" then
+			castTornado(player, data.direction, data.targetPosition)
 		end
 	end)
 
@@ -1205,11 +1607,13 @@ function DisasterWeaponService.start()
 			upgradeLightning(player)
 		elseif data.weapon == "Meteor" then
 			upgradeMeteor(player)
+		elseif data.weapon == "Tornado" then
+			upgradeTornado(player)
 		end
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
-		lastCastTimes[player] = nil
+		lastCastTimesByUserId[player.UserId] = nil
 	end)
 end
 

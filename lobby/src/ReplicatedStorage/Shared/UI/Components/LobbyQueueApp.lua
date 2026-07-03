@@ -25,6 +25,7 @@ local MAPS = {
 		Dark = Color3.fromRGB(30, 69, 42),
 		Fog = Color3.fromRGB(170, 244, 137),
 		ImageTemplate = "rbxasset://textures/ui/GuiImagePlaceholder.png",
+		Locked = true,
 	},
 	{
 		Name = "METRO",
@@ -35,6 +36,7 @@ local MAPS = {
 		Dark = Color3.fromRGB(79, 30, 37),
 		Fog = Color3.fromRGB(255, 170, 126),
 		ImageTemplate = "rbxasset://textures/ui/GuiImagePlaceholder.png",
+		Locked = true,
 	},
 }
 
@@ -90,7 +92,7 @@ local function label(props)
 		Position = props.Position,
 		Size = props.Size,
 		Text = props.Text,
-		TextColor3 = WHITE,
+		TextColor3 = props.TextColor3 or WHITE,
 		TextScaled = props.TextScaled,
 		TextSize = props.TextSize or 18,
 		TextStrokeColor3 = props.TextStrokeColor3 or Color3.fromRGB(0, 0, 0),
@@ -201,22 +203,27 @@ local function mapBackdrop(map, zIndex)
 end
 
 local function mapCard(map, selected, hovered, clickTime, onActivated, onHover, layoutOrder, clock)
-	local pulse = if selected then (math.sin(clock * 8) + 1) / 2 else 0
+	local locked = map.Locked == true
+	local pulse = if selected and not locked then (math.sin(clock * 8) + 1) / 2 else 0
 	local strokeThickness = if selected then 3 + pulse else 2
-	local glowTransparency = if selected or hovered then 0.45 - (pulse * 0.22) else 1
-	local bounce = bounceSince(clock, clickTime, 0.34, 0.18)
-	local scale = 1 + (if hovered then 0.055 else 0) + bounce + (if selected then pulse * 0.018 else 0)
+	local glowTransparency = if (selected or hovered) and not locked then 0.45 - (pulse * 0.22) else 1
+	local bounce = if locked then 0 else bounceSince(clock, clickTime, 0.34, 0.18)
+	local scale = 1 + (if hovered and not locked then 0.055 else 0) + bounce + (if selected and not locked then pulse * 0.018 else 0)
 
 	return e("TextButton", {
+		Active = not locked,
+		AutoButtonColor = not locked,
 		BackgroundColor3 = INK,
 		BorderSizePixel = 0,
 		LayoutOrder = layoutOrder,
 		Size = UDim2.new(0, 142, 0, 96),
 		Text = "",
 		ZIndex = 6,
-		[React.Event.Activated] = onActivated,
+		[React.Event.Activated] = if locked then nil else onActivated,
 		[React.Event.MouseEnter] = function()
-			onHover(true)
+			if not locked then
+				onHover(true)
+			end
 		end,
 		[React.Event.MouseLeave] = function()
 			onHover(false)
@@ -246,6 +253,25 @@ local function mapCard(map, selected, hovered, clickTime, onActivated, onHover, 
 		}, {
 			Corner = corner(5),
 			Backdrop = mapBackdrop(map, 7),
+			LockedWash = if locked then e("Frame", {
+				BackgroundColor3 = Color3.fromRGB(90, 94, 104),
+				BackgroundTransparency = 0.16,
+				BorderSizePixel = 0,
+				Size = UDim2.fromScale(1, 1),
+				ZIndex = 14,
+			}, {
+				Corner = corner(5),
+			}) else nil,
+			WipText = if locked then label({
+				Font = Enum.Font.GothamBlack,
+				Size = UDim2.fromScale(1, 1),
+				Text = "WIP",
+				TextColor3 = Color3.fromRGB(220, 225, 232),
+				TextSize = 26,
+				TextStrokeTransparency = 0.02,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = 15,
+			}) else nil,
 			NamePlate = e("Frame", {
 				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
 				BackgroundTransparency = 0.24,
@@ -276,7 +302,7 @@ local function mapCard(map, selected, hovered, clickTime, onActivated, onHover, 
 			}),
 		}),
 		Votes = e("Frame", {
-			BackgroundColor3 = RED,
+			BackgroundColor3 = if locked then Color3.fromRGB(76, 80, 90) else RED,
 			BorderSizePixel = 0,
 			Position = UDim2.new(0, 0, 1, -28),
 			Size = UDim2.new(1, 0, 0, 28),
@@ -286,7 +312,7 @@ local function mapCard(map, selected, hovered, clickTime, onActivated, onHover, 
 			Text = label({
 				Font = Enum.Font.GothamBlack,
 				Size = UDim2.fromScale(1, 1),
-				Text = if selected then "SELECTED" else "0 VOTES",
+				Text = if locked then "WIP" elseif selected then "SELECTED" else "0 VOTES",
 				TextSize = 16,
 				TextXAlignment = Enum.TextXAlignment.Center,
 				ZIndex = 9,
@@ -375,8 +401,68 @@ local function playerSlot(index, active)
 	})
 end
 
+local function creditsBadge(credits)
+	return e("Frame", {
+		AnchorPoint = Vector2.new(0, 1),
+		BackgroundColor3 = PANEL,
+		BackgroundTransparency = 0.06,
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, 20, 1, -86),
+		Size = UDim2.fromOffset(170, 48),
+		ZIndex = 60,
+	}, {
+		Corner = corner(8),
+		Stroke = e("UIStroke", {
+			Color = LIGHTNING,
+			Thickness = 2,
+			Transparency = 0.12,
+		}),
+		Icon = e("Frame", {
+			BackgroundColor3 = LIGHTNING,
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(9, 9),
+			Size = UDim2.fromOffset(30, 30),
+			ZIndex = 61,
+		}, {
+			Corner = corner(7),
+			Stroke = stroke(nil, 2, 0),
+			Text = label({
+				Font = Enum.Font.GothamBlack,
+				Size = UDim2.fromScale(1, 1),
+				Text = "CR",
+				TextColor3 = Color3.fromRGB(20, 42, 74),
+				TextSize = 14,
+				TextStrokeTransparency = 1,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = 62,
+			}),
+		}),
+		Title = label({
+			Font = Enum.Font.GothamBlack,
+			Position = UDim2.fromOffset(47, 6),
+			Size = UDim2.new(1, -56, 0, 16),
+			Text = "CR",
+			TextColor3 = LIGHTNING,
+			TextSize = 13,
+			TextStrokeTransparency = 0.18,
+			ZIndex = 61,
+		}),
+		Amount = label({
+			Font = Enum.Font.GothamBlack,
+			Position = UDim2.fromOffset(47, 21),
+			Size = UDim2.new(1, -56, 0, 22),
+			Text = tostring(credits or 0),
+			TextColor3 = WHITE,
+			TextSize = 22,
+			TextStrokeTransparency = 0.05,
+			ZIndex = 61,
+		}),
+	})
+end
+
 local function LobbyQueueApp(props)
 	local network = props.Network
+	local credits, setCredits = React.useState(0)
 	local prompt, setPrompt = React.useState(nil)
 	local selectedMapIndex, setSelectedMapIndex = React.useState(1)
 	local selectedDifficulty, setSelectedDifficulty = React.useState(DIFFICULTIES[1].Name)
@@ -420,6 +506,11 @@ local function LobbyQueueApp(props)
 			setStatus(data.message or "")
 		end)
 
+		network.storeState.listen(function(data)
+			setCredits(data.coins or 0)
+		end)
+		network.storeStateRequest.send()
+
 		return function()
 			alive = false
 			heartbeat:Disconnect()
@@ -441,6 +532,10 @@ local function LobbyQueueApp(props)
 
 	for index, map in MAPS do
 		mapCards[`Map{index}`] = mapCard(map, selectedMapIndex == index, hoveredMapIndex == index, mapClickTimes[index], function()
+			if map.Locked then
+				return
+			end
+
 			local nextTimes = table.clone(mapClickTimes)
 			nextTimes[index] = os.clock()
 			setMapClickTimes(nextTimes)
@@ -505,20 +600,22 @@ local function LobbyQueueApp(props)
 
 	return e("ScreenGui", {
 		DisplayOrder = 40,
-		Enabled = visible,
+		Enabled = true,
 		IgnoreGuiInset = true,
 		Name = "LobbyQueueGui",
 		ResetOnSpawn = false,
 	}, {
-		Dim = e("Frame", {
+		Credits = creditsBadge(credits),
+
+		Dim = if visible then e("Frame", {
 			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
 			BackgroundTransparency = 0.36,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
 			ZIndex = 1,
-		}),
+		}) else nil,
 
-		Main = e("Frame", {
+		Main = if visible then e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			BackgroundTransparency = 1,
 			Position = UDim2.fromScale(0.5, 0.52),
@@ -803,7 +900,7 @@ local function LobbyQueueApp(props)
 					}),
 				}),
 			}),
-		}),
+		}) else nil,
 	})
 end
 

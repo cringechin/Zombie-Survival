@@ -192,7 +192,7 @@ function Queue:UpdateUI()
 end
 
 function Queue:CancelThread(thread)
-	if thread and coroutine.status(thread) ~= "dead" then
+	if thread and thread ~= coroutine.running() and coroutine.status(thread) ~= "dead" then
 		task.cancel(thread)
 	end
 end
@@ -308,7 +308,9 @@ function Queue:TeleportQueue()
 
 	local ok, err = pcall(function()
 		if self.reservedServer then
-			TeleportService:TeleportToPrivateServer(self.config.GameplayPlaceId, self.reservedServer, party, "")
+			local options = Instance.new("TeleportOptions")
+			options.ReservedServerAccessCode = self.reservedServer
+			TeleportService:TeleportAsync(self.config.GameplayPlaceId, party, options)
 		else
 			TeleportService:TeleportAsync(self.config.GameplayPlaceId, party)
 		end

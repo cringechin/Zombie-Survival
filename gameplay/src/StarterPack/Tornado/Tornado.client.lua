@@ -1,6 +1,5 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
@@ -9,15 +8,10 @@ local Network = require(ReplicatedStorage.Shared.Network.Packets)
 local DisasterWeaponConfig = require(ReplicatedStorage.Shared.Weapons.DisasterWeaponConfig)
 
 local MAX_RAY_DISTANCE = 1000
-local LIGHTNING_COOLDOWN = DisasterWeaponConfig.Lightning.Cooldown
-local FIRE_INTERVAL = LIGHTNING_COOLDOWN + 0.01
+local TORNADO_CONFIG = DisasterWeaponConfig.Tornado
 
 local localPlayer = Players.LocalPlayer
 local tool = script.Parent
-local firing = false
-local equipped = false
-local primaryFireHeld = false
-local lastLocalFeedbackAt = 0
 
 local function getFlatAimDirection()
 	local camera = Workspace.CurrentCamera
@@ -56,82 +50,28 @@ local function getFlatAimDirection()
 	return flatDirection.Unit, worldPosition
 end
 
-local function castLightning()
+tool.Activated:Connect(function()
+	local cooldownEndsAt = tool:GetAttribute("CooldownEndsAt")
+	if typeof(cooldownEndsAt) == "number" and cooldownEndsAt > os.clock() then
+		return
+	end
+
 	local direction, targetPosition = getFlatAimDirection()
 	if not direction then
 		return
 	end
 
-	tool:SetAttribute("CooldownDuration", LIGHTNING_COOLDOWN)
-	tool:SetAttribute("CooldownEndsAt", os.clock() + LIGHTNING_COOLDOWN)
+	local cooldown = TORNADO_CONFIG.Cooldown
+	tool:SetAttribute("CooldownDuration", cooldown)
+	tool:SetAttribute("CooldownEndsAt", os.clock() + cooldown)
+
+	ClientFeedback.cameraKick(0.9, 0.18)
+	ClientFeedback.screenFlash(Color3.fromRGB(190, 235, 235), 0.14, 0.82)
+	ClientFeedback.castPulse(Color3.fromRGB(190, 235, 235))
 
 	Network.disasterWeaponCast.send({
-		weapon = "Lightning",
+		weapon = "Tornado",
 		direction = direction,
 		targetPosition = targetPosition or Vector3.zero,
 	})
-
-	local now = os.clock()
-	if now - lastLocalFeedbackAt > 0.08 then
-		lastLocalFeedbackAt = now
-		ClientFeedback.cameraKick(0.75, 0.13)
-		ClientFeedback.screenFlash(Color3.fromRGB(112, 215, 255), 0.12, 0.9)
-		ClientFeedback.castPulse(Color3.fromRGB(112, 215, 255))
-	end
-end
-
-local function startFiring()
-	if firing then
-		return
-	end
-
-	firing = true
-	task.spawn(function()
-		while firing and equipped and primaryFireHeld do
-			castLightning()
-			task.wait(FIRE_INTERVAL)
-		end
-
-		firing = false
-	end)
-end
-
-local function stopFiring()
-	firing = false
-end
-
-tool.Equipped:Connect(function()
-	equipped = true
-end)
-
-tool.Unequipped:Connect(function()
-	equipped = false
-	primaryFireHeld = false
-	stopFiring()
-end)
-
-tool.Activated:Connect(function()
-	primaryFireHeld = true
-	startFiring()
-end)
-
-tool.Deactivated:Connect(function()
-	primaryFireHeld = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
-	if not primaryFireHeld then
-		stopFiring()
-	end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		primaryFireHeld = false
-		stopFiring()
-	end
-end)
-
-RunService.Heartbeat:Connect(function()
-	if equipped and not firing and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
-		primaryFireHeld = true
-		startFiring()
-	end
 end)

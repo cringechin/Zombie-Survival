@@ -78,6 +78,17 @@
           "MeteorClient": {
             "$path": "gameplay/src/StarterPack/Meteor/Meteor.client.lua"
           }
+        },
+        "Tornado": {
+          "$className": "Tool",
+          "$properties": {
+            "RequiresHandle": false,
+            "CanBeDropped": false,
+            "ToolTip": "Summon a tornado"
+          },
+          "TornadoClient": {
+            "$path": "gameplay/src/StarterPack/Tornado/Tornado.client.lua"
+          }
         }
       }
     },

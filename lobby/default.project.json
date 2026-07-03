@@ -13,6 +13,9 @@
       "$path": "src/ServerScriptService",
       "Runtime": {
         "$path": "../shared/ServerRuntime"
+      },
+      "ServerPackages": {
+        "$path": "../ServerPackages"
       }
     },
     "StarterPlayer": {

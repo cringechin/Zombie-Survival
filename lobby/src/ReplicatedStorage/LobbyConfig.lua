@@ -1,5 +1,5 @@
 return {
-	GameplayPlaceId = 0,
+	GameplayPlaceId = 135327986102934,
 	MaximumPlayers = 4,
 	MinimumPlayers = 1,
 	CreationTime = 15,

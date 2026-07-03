@@ -23,13 +23,15 @@ GameConfig.StressTestLiveCap = 220
 GameConfig.StressTestSpawnGroupSize = 3
 GameConfig.StressTestTimeBetweenSpawnGroups = 0.35
 GameConfig.StressTestMaxLightning = true
+GameConfig.TestUnlockTornado = false
 
 GameConfig.LightweightZombieMovement = false
 GameConfig.ZombieUpdatesPerFrame = 75
 GameConfig.ZombieSeparationDistance = 3.5
 GameConfig.ZombieSeparationWeight = 1.6
 GameConfig.ZombieMaxGroundStepHeight = 2.5
-GameConfig.StartingCoins = 5000
+GameConfig.StartingCoins = 0
+GameConfig.CreditsPerZombieKill = 5
 
 GameConfig.Defenses = {
 	LightningTurret = {

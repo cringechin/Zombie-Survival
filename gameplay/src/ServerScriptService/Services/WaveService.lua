@@ -94,7 +94,9 @@ end
 
 local function setCurrentWave(waveNumber)
 	currentWave = waveNumber
-	PlayerLifeService.respawnDownedPlayers()
+	if not PlayerLifeService.shouldHoldWaveStartForSoloDowned() then
+		PlayerLifeService.respawnDownedPlayers()
+	end
 
 	for _, player in Players:GetPlayers() do
 		PlayerDataService.setWave(player, waveNumber)
@@ -108,6 +110,28 @@ local function setCurrentWave(waveNumber)
 		zombiesTotal = 0,
 		zombiesAlive = 0,
 	})
+end
+
+local function waitForSoloReviveBeforeWaveStart(waveNumber)
+	local notified = false
+
+	while running and not requestedWave and PlayerLifeService.shouldHoldWaveStartForSoloDowned() do
+		if not notified then
+			notified = true
+			sendNotification("REVIVE REQUIRED", "Revive before the next wave starts.", "danger")
+		end
+
+		sendWaveStatus({
+			wave = waveNumber,
+			status = WaveStatus.Intermission,
+			seconds = 0,
+			zombiesRemaining = 0,
+			zombiesTotal = 0,
+			zombiesAlive = 0,
+		})
+
+		task.wait(1)
+	end
 end
 
 local function isAdmin(player)
@@ -218,6 +242,8 @@ local function run()
 
 			task.wait(1)
 		end
+
+		waitForSoloReviveBeforeWaveStart(currentWave + 1)
 
 		local nextWave = consumeRequestedWave() or (currentWave + 1)
 		setCurrentWave(nextWave)

@@ -22,19 +22,18 @@ local function buildRows()
 
 	for _, player in Players:GetPlayers() do
 		local runKills = player:GetAttribute("RunKills")
-		local runCoins = player:GetAttribute("RunCoinsEarned")
-		local totalCoins = getLeaderstatValue(player, GameConfig.LeaderstatNames.Coins)
+		local runCredits = player:GetAttribute("RunCreditsEarned")
 		table.insert(rows, {
 			Name = player.Name,
 			Kills = if typeof(runKills) == "number" then runKills else getLeaderstatValue(player, GameConfig.LeaderstatNames.Kills),
-			Money = if totalCoins > 0 then totalCoins else (if typeof(runCoins) == "number" then runCoins else 0),
+			Credits = if typeof(runCredits) == "number" then runCredits else 0,
 			IsLocal = player == localPlayer,
 		})
 	end
 
 	table.sort(rows, function(a, b)
 		if a.Kills == b.Kills then
-			return a.Money > b.Money
+			return a.Credits > b.Credits
 		end
 
 		return a.Kills > b.Kills
@@ -135,7 +134,7 @@ local function rowItem(entry, layoutOrder)
 			Font = Enum.Font.GothamBlack,
 			Position = UDim2.new(0.78, 0, 0, 0),
 			Size = UDim2.new(0.22, -10, 1, 0),
-			Text = tostring(entry.Money),
+			Text = tostring(entry.Credits),
 			TextColor3 = Style.GOLD,
 			TextScaled = true,
 			MaxTextSize = 16,
@@ -154,7 +153,7 @@ local function VictoryScreen()
 		Duration = 0,
 		TeamKills = 0,
 		Survivors = 0,
-		TeamMoney = 0,
+		TeamCredits = 0,
 		LocalReward = 0,
 	})
 
@@ -185,11 +184,11 @@ local function VictoryScreen()
 
 			local runRows = buildRows()
 			local teamKills = 0
-			local teamMoney = 0
+			local teamCredits = 0
 
 			for _, row in runRows do
 				teamKills += row.Kills
-				teamMoney += row.Money
+				teamCredits += row.Credits
 			end
 
 			local returnAt = Workspace:GetAttribute("VictoryReturnAt")
@@ -205,8 +204,8 @@ local function VictoryScreen()
 				Duration = Workspace:GetAttribute("VictoryDuration") or 0,
 				TeamKills = teamKills,
 				Survivors = getSurvivorCount(),
-				TeamMoney = teamMoney,
-				LocalReward = localPlayer:GetAttribute("RunCoinsEarned") or 0,
+				TeamCredits = teamCredits,
+				LocalReward = localPlayer:GetAttribute("RunCreditsEarned") or 0,
 			})
 		end)
 
@@ -324,7 +323,7 @@ local function VictoryScreen()
 					Font = Enum.Font.GothamBlack,
 					Position = UDim2.new(0.78, 0, 0, 0),
 					Size = UDim2.new(0.22, -10, 1, 0),
-					Text = "Money",
+					Text = "CR",
 					TextColor3 = Style.GOLD,
 					TextScaled = true,
 					MaxTextSize = 15,
@@ -342,7 +341,7 @@ local function VictoryScreen()
 				Font = Enum.Font.GothamBlack,
 				Position = UDim2.fromOffset(0, 390),
 				Size = UDim2.new(1, 0, 0, 26),
-				Text = `Survivors: {summary.Survivors} | Team Money: {summary.TeamMoney} | Returning in {countdown}s`,
+				Text = `Survivors: {summary.Survivors} | Team CR: {summary.TeamCredits} | Returning in {countdown}s`,
 				TextColor3 = Style.LIGHTNING,
 				TextScaled = true,
 				MaxTextSize = 20,
