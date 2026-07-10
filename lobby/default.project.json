@@ -7,6 +7,14 @@
       "$path": "src/ReplicatedStorage",
       "Packages": {
         "$path": "../Packages"
+      },
+      "Assets": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true,
+        "MapImages": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
+        }
       }
     },
     "ServerScriptService": {

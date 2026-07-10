@@ -35,22 +35,13 @@ return ByteNet.defineNamespace("lobby", function()
 		}),
 
 		meteorStoreRequest = ByteNet.definePacket({
-			value = ByteNet.struct({
-				slot = ByteNet.uint8,
-			}),
+			value = ByteNet.nothing,
 		}),
 
 		disasterPurchaseRequest = ByteNet.definePacket({
 			value = ByteNet.struct({
 				weapon = ByteNet.string,
-				slot = ByteNet.uint8,
-			}),
-		}),
-
-		disasterEquipRequest = ByteNet.definePacket({
-			value = ByteNet.struct({
-				weapon = ByteNet.string,
-				slot = ByteNet.uint8,
+				slot = ByteNet.optional(ByteNet.uint8),
 			}),
 		}),
 
@@ -61,6 +52,7 @@ return ByteNet.defineNamespace("lobby", function()
 		storeState = ByteNet.definePacket({
 			value = ByteNet.struct({
 				coins = ByteNet.uint32,
+				bestWave = ByteNet.uint32,
 				meteorUnlocked = ByteNet.bool,
 				meteorEquipped = ByteNet.bool,
 				meteorCost = ByteNet.uint32,

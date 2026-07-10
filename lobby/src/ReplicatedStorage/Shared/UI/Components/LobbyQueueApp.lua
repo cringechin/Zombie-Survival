@@ -1,3 +1,4 @@
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
@@ -7,17 +8,18 @@ local e = React.createElement
 
 local MAPS = {
 	{
-		Name = "STORM LAB",
+		Name = "Lab",
 		Title = "STORMBREAK LABS",
 		Threat = "BOSS | LIGHTNING REVENANT",
 		Description = "OVERRUN RESEARCH FACILITY",
 		Accent = Color3.fromRGB(85, 216, 255),
 		Dark = Color3.fromRGB(20, 42, 74),
 		Fog = Color3.fromRGB(154, 243, 255),
+		ImagePath = "Assets.MapImages.Lab",
 		ImageTemplate = "rbxasset://textures/ui/GuiImagePlaceholder.png",
 	},
 	{
-		Name = "CRYPT",
+		Name = "Rotwood Crypt",
 		Title = "ROTWOOD CRYPT",
 		Threat = "HORDE | GRAVEBORN",
 		Description = "BURIAL GROUNDS UNDER LOCKDOWN",
@@ -28,7 +30,7 @@ local MAPS = {
 		Locked = true,
 	},
 	{
-		Name = "METRO",
+		Name = "Deadline Metro",
 		Title = "DEADLINE METRO",
 		Threat = "SWARM | TUNNEL DEAD",
 		Description = "BLACKOUT TRANSIT HUB",
@@ -41,18 +43,40 @@ local MAPS = {
 }
 
 local DIFFICULTIES = {
-	{ Name = "NORMAL", Color = Color3.fromRGB(57, 230, 91) },
-	{ Name = "HARD", Color = Color3.fromRGB(255, 190, 46) },
-	{ Name = "NIGHTMARE", Color = Color3.fromRGB(255, 61, 84) },
+	{
+		Name = "NORMAL",
+		Display = "Normal",
+		Color = Color3.fromRGB(57, 230, 91),
+		CreditsPerKill = 5,
+		Modifier = "1% Galactic zombie chance",
+		ModifierColor = Color3.fromRGB(170, 140, 255),
+	},
+	{
+		Name = "HARD",
+		Display = "Hard",
+		Color = Color3.fromRGB(255, 190, 46),
+		CreditsPerKill = 8,
+		Modifier = "3% Galactic zombie chance",
+		ModifierColor = Color3.fromRGB(170, 140, 255),
+	},
+	{
+		Name = "NIGHTMARE",
+		Display = "Nightmare",
+		Color = Color3.fromRGB(255, 61, 84),
+		CreditsPerKill = 12,
+		Modifier = "6% Galactic zombie chance",
+		ModifierColor = Color3.fromRGB(170, 140, 255),
+	},
 }
 
-local RED = Color3.fromRGB(240, 49, 68)
-local RED_DARK = Color3.fromRGB(102, 18, 34)
-local INK = Color3.fromRGB(7, 8, 15)
-local PANEL = Color3.fromRGB(14, 17, 25)
-local PANEL_SOFT = Color3.fromRGB(20, 24, 35)
+local PANEL = Color3.fromRGB(24, 26, 32)
+local PANEL_DARK = Color3.fromRGB(16, 18, 24)
+local DROPDOWN = Color3.fromRGB(168, 210, 236)
+local GREEN = Color3.fromRGB(72, 196, 84)
+local GREEN_BRIGHT = Color3.fromRGB(88, 220, 96)
+local GREY = Color3.fromRGB(176, 182, 194)
 local WHITE = Color3.fromRGB(248, 248, 240)
-local LIGHTNING = Color3.fromRGB(122, 232, 255)
+local RED = Color3.fromRGB(220, 52, 58)
 
 local function bounceSince(clock, timestamp, duration, strength)
 	if not timestamp then
@@ -75,9 +99,9 @@ local function corner(radius)
 	})
 end
 
-local function stroke(_color, thickness, transparency)
+local function stroke(color, thickness, transparency)
 	return e("UIStroke", {
-		Color = Color3.fromRGB(0, 0, 0),
+		Color = color or Color3.fromRGB(0, 0, 0),
 		Thickness = thickness or 2,
 		Transparency = transparency or 0,
 	})
@@ -104,381 +128,217 @@ local function label(props)
 	}, props.Children)
 end
 
-local function redTab(textValue)
-	return e("Frame", {
-		BackgroundColor3 = RED,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(0, -29),
-		Size = UDim2.fromOffset(112, 32),
-		ZIndex = 7,
-	}, {
-		Corner = corner(5),
-		Stroke = stroke(nil, 2, 0),
-		Label = label({
-			Font = Enum.Font.GothamBlack,
-			Position = UDim2.fromOffset(14, 0),
-			Size = UDim2.new(1, -18, 1, 0),
-			Text = textValue,
-			TextSize = 16,
-			ZIndex = 8,
-		}),
-	})
+local function findMapAsset(imagePath)
+	local node = ReplicatedStorage
+	local segments = string.split(imagePath, ".")
+
+	for index, segment in segments do
+		if index == #segments then
+			node = node:WaitForChild(segment, 10)
+		else
+			node = node:FindFirstChild(segment)
+		end
+
+		if not node then
+			return nil
+		end
+	end
+
+	return node
 end
 
-local function imageTemplate(map, zIndex)
-	return e("ImageLabel", {
-		BackgroundColor3 = map.Dark,
-		BorderSizePixel = 0,
-		Image = map.ImageTemplate,
-		ImageColor3 = Color3.fromRGB(255, 255, 255),
-		ImageTransparency = 0.08,
-		Name = "ImageTemplate",
-		Position = UDim2.fromOffset(-4, -4),
-		ScaleType = Enum.ScaleType.Crop,
-		Size = UDim2.new(1, 8, 1, 8),
-		ZIndex = zIndex,
-	}, {
-		Corner = corner(8),
-		ColorWash = e("Frame", {
-			BackgroundColor3 = map.Accent,
-			BackgroundTransparency = 0.78,
-			BorderSizePixel = 0,
-			Size = UDim2.fromScale(1, 1),
-			ZIndex = zIndex + 1,
-		}, {
-			Corner = corner(8),
-		}),
-	})
+local function mountMapPreview(imagePath)
+	local playerGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local host = playerGui and playerGui:FindFirstChild("MapPreviewHost", true)
+	if not host or not host:IsA("GuiObject") then
+		return
+	end
+
+	for _, child in host:GetChildren() do
+		child:Destroy()
+	end
+
+	if not imagePath then
+		return
+	end
+
+	local source = findMapAsset(imagePath)
+	if not source then
+		return
+	end
+
+	if source:IsA("Folder") then
+		source = source:FindFirstChildWhichIsA("ImageLabel", true)
+			or source:FindFirstChildWhichIsA("ImageButton", true)
+			or source:FindFirstChildWhichIsA("Decal", true)
+	end
+
+	if not source then
+		return
+	end
+
+	if source:IsA("GuiObject") then
+		local clone = source:Clone()
+		clone.Name = "MapPreviewClone"
+		clone.AnchorPoint = Vector2.new(0, 0)
+		clone.Position = UDim2.fromScale(0, 0)
+		clone.Size = UDim2.fromScale(1, 1)
+		clone.Visible = true
+		clone.ZIndex = host.ZIndex + 1
+		clone.Parent = host
+		return
+	end
+
+	local preview = Instance.new("ImageLabel")
+	preview.Name = "MapPreviewClone"
+	preview.BackgroundTransparency = 1
+	preview.Position = UDim2.fromScale(0, 0)
+	preview.Size = UDim2.fromScale(1, 1)
+	preview.ScaleType = Enum.ScaleType.Crop
+	preview.ZIndex = host.ZIndex + 1
+	preview.Parent = host
+
+	if source:IsA("Decal") or source:IsA("Texture") then
+		preview.Image = source.Texture
+	elseif source:IsA("ImageLabel") or source:IsA("ImageButton") then
+		preview.Image = source.Image
+	else
+		local assigned = pcall(function()
+			preview.Image = source
+		end)
+
+		if not assigned then
+			preview.Image = source:GetAttribute("Image") or ""
+		end
+	end
 end
 
-local function mapBackdrop(map, zIndex)
+local function mapPreview(map, zIndex)
 	return e("Frame", {
 		BackgroundColor3 = map.Dark,
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
+		Name = if map.ImagePath then "MapPreviewHost" else nil,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = zIndex,
 	}, {
 		Corner = corner(8),
-		ImageTemplate = imageTemplate(map, zIndex + 1),
-		Vignette = e("Frame", {
-			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-			BackgroundTransparency = 0.52,
-			BorderSizePixel = 0,
+		Stroke = stroke(Color3.fromRGB(0, 0, 0), 2, 0),
+		Locked = if map.Locked then label({
+			Font = Enum.Font.GothamBlack,
 			Size = UDim2.fromScale(1, 1),
-			ZIndex = zIndex + 1,
-		}, {
-			Corner = corner(8),
-		}),
-		Shade = e("Frame", {
-			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-			BackgroundTransparency = 0.12,
-			BorderSizePixel = 0,
-			Position = UDim2.fromScale(0, 0.62),
-			Size = UDim2.new(1, 0, 0.38, 0),
-			ZIndex = zIndex + 2,
-		}, {
-			Corner = corner(8),
-		}),
-		AccentLine = e("Frame", {
-			BackgroundColor3 = map.Accent,
-			BackgroundTransparency = 0.15,
-			BorderSizePixel = 0,
-			Position = UDim2.new(0, 0, 0, 0),
-			Size = UDim2.new(1, 0, 0, 4),
+			Text = "COMING SOON",
+			TextSize = 24,
+			TextXAlignment = Enum.TextXAlignment.Center,
 			ZIndex = zIndex + 3,
-		}),
-		Fog = e("Frame", {
-			BackgroundColor3 = map.Fog or map.Accent,
-			BackgroundTransparency = 0.83,
-			BorderSizePixel = 0,
-			Position = UDim2.new(0, -20, 0.2, 0),
-			Rotation = -8,
-			Size = UDim2.new(1, 40, 0, 34),
-			ZIndex = zIndex + 3,
-		}, {
-			Corner = corner(10),
-		}),
+		}) else nil,
 	})
 end
 
-local function mapCard(map, selected, hovered, clickTime, onActivated, onHover, layoutOrder, clock)
-	local locked = map.Locked == true
-	local pulse = if selected and not locked then (math.sin(clock * 8) + 1) / 2 else 0
-	local strokeThickness = if selected then 3 + pulse else 2
-	local glowTransparency = if (selected or hovered) and not locked then 0.45 - (pulse * 0.22) else 1
-	local bounce = if locked then 0 else bounceSince(clock, clickTime, 0.34, 0.18)
-	local scale = 1 + (if hovered and not locked then 0.055 else 0) + bounce + (if selected and not locked then pulse * 0.018 else 0)
-
+local function dropdownButton(textValue, enabled, onActivated, zIndex)
 	return e("TextButton", {
-		Active = not locked,
-		AutoButtonColor = not locked,
-		BackgroundColor3 = INK,
+		AutoButtonColor = enabled,
+		BackgroundColor3 = if enabled then DROPDOWN else Color3.fromRGB(120, 124, 132),
 		BorderSizePixel = 0,
-		LayoutOrder = layoutOrder,
-		Size = UDim2.new(0, 142, 0, 96),
+		Font = Enum.Font.GothamBold,
+		Size = UDim2.new(1, 0, 0, 38),
 		Text = "",
-		ZIndex = 6,
-		[React.Event.Activated] = if locked then nil else onActivated,
-		[React.Event.MouseEnter] = function()
-			if not locked then
-				onHover(true)
-			end
-		end,
-		[React.Event.MouseLeave] = function()
-			onHover(false)
-		end,
+		ZIndex = zIndex,
+		[React.Event.Activated] = if enabled then onActivated else nil,
 	}, {
 		Corner = corner(6),
-		Stroke = stroke(nil, strokeThickness, 0),
-		Scale = e("UIScale", {
-			Scale = scale,
+		Stroke = stroke(Color3.fromRGB(0, 0, 0), 2, 0),
+		Value = label({
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.fromOffset(12, 0),
+			Size = UDim2.new(1, -36, 1, 0),
+			Text = textValue,
+			TextColor3 = Color3.fromRGB(20, 24, 32),
+			TextSize = 18,
+			TextStrokeTransparency = 1,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = zIndex + 1,
 		}),
-		Glow = e("Frame", {
-			BackgroundColor3 = RED,
-			BackgroundTransparency = glowTransparency,
-			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(-3, -3),
-			Size = UDim2.new(1, 6, 1, 6),
-			ZIndex = 5,
-		}, {
-			Corner = corner(8),
-		}),
-		Preview = e("Frame", {
-			BackgroundTransparency = 1,
-			ClipsDescendants = true,
-			Position = UDim2.fromOffset(4, 4),
-			Size = UDim2.new(1, -8, 0, 60),
-			ZIndex = 7,
-		}, {
-			Corner = corner(5),
-			Backdrop = mapBackdrop(map, 7),
-			LockedWash = if locked then e("Frame", {
-				BackgroundColor3 = Color3.fromRGB(90, 94, 104),
-				BackgroundTransparency = 0.16,
-				BorderSizePixel = 0,
-				Size = UDim2.fromScale(1, 1),
-				ZIndex = 14,
-			}, {
-				Corner = corner(5),
-			}) else nil,
-			WipText = if locked then label({
-				Font = Enum.Font.GothamBlack,
-				Size = UDim2.fromScale(1, 1),
-				Text = "WIP",
-				TextColor3 = Color3.fromRGB(220, 225, 232),
-				TextSize = 26,
-				TextStrokeTransparency = 0.02,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				ZIndex = 15,
-			}) else nil,
-			NamePlate = e("Frame", {
-				BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-				BackgroundTransparency = 0.24,
-				BorderSizePixel = 0,
-				Position = UDim2.new(0, 0, 1, -26),
-				Size = UDim2.new(1, 0, 0, 26),
-				ZIndex = 11,
-			}, {
-				Corner = corner(4),
-			}),
-			Name = label({
-				Font = Enum.Font.GothamBlack,
-				Position = UDim2.new(0, 8, 1, -26),
-				Size = UDim2.new(1, -16, 0, 16),
-				Text = map.Name,
-				TextSize = 13,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				ZIndex = 12,
-			}),
-			Threat = label({
-				Font = Enum.Font.GothamBlack,
-				Position = UDim2.new(0, 8, 1, -12),
-				Size = UDim2.new(1, -16, 0, 10),
-				Text = map.Threat,
-				TextSize = 8,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				ZIndex = 12,
-			}),
-		}),
-		Votes = e("Frame", {
-			BackgroundColor3 = if locked then Color3.fromRGB(76, 80, 90) else RED,
-			BorderSizePixel = 0,
-			Position = UDim2.new(0, 0, 1, -28),
-			Size = UDim2.new(1, 0, 0, 28),
-			ZIndex = 8,
-		}, {
-			Corner = corner(4),
-			Text = label({
-				Font = Enum.Font.GothamBlack,
-				Size = UDim2.fromScale(1, 1),
-				Text = if locked then "WIP" elseif selected then "SELECTED" else "0 VOTES",
-				TextSize = 16,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				ZIndex = 9,
-			}),
+		Arrow = label({
+			AnchorPoint = Vector2.new(1, 0.5),
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.new(1, -10, 0.5, 0),
+			Size = UDim2.fromOffset(18, 18),
+			Text = "▼",
+			TextColor3 = Color3.fromRGB(20, 24, 32),
+			TextSize = 14,
+			TextStrokeTransparency = 1,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = zIndex + 1,
 		}),
 	})
 end
 
-local function selectorButton(textValue, selected, hovered, clickTime, color, onActivated, onHover, layoutOrder, clock)
-	local pulse = if selected then (math.sin(clock * 9) + 1) / 2 else 0
-	local bounce = bounceSince(clock, clickTime, 0.28, 0.16)
-	local scale = 1 + (if hovered then 0.045 else 0) + bounce + (if selected then pulse * 0.012 else 0)
-	local shineTransparency = if hovered or selected then 0.86 - (pulse * 0.1) else 1
-
+local function partySizeButton(count, selected, enabled, onActivated, layoutOrder, zIndex)
 	return e("TextButton", {
-		BackgroundColor3 = if selected then color else Color3.fromRGB(20, 24, 35),
+		AutoButtonColor = enabled,
+		BackgroundColor3 = if selected then GREEN_BRIGHT else GREY,
 		BorderSizePixel = 0,
 		Font = Enum.Font.GothamBlack,
 		LayoutOrder = layoutOrder,
-		Size = UDim2.new(1, 0, 0, 36),
-		Text = textValue,
-		TextColor3 = WHITE,
-		TextSize = 15,
+		Size = UDim2.fromOffset(72, 72),
+		Text = tostring(count),
+		TextColor3 = if selected then WHITE else Color3.fromRGB(36, 40, 48),
+		TextSize = 34,
 		TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-		TextStrokeTransparency = 0.08,
-		ZIndex = 8,
-		[React.Event.Activated] = onActivated,
-		[React.Event.MouseEnter] = function()
-			onHover(true)
-		end,
-		[React.Event.MouseLeave] = function()
-			onHover(false)
-		end,
-	}, {
-		Corner = corner(6),
-		Stroke = stroke(if selected then WHITE else Color3.fromRGB(118, 43, 57), if selected then 2 else 1, if selected then 0 else 0.05),
-		Scale = e("UIScale", {
-			Scale = scale,
-		}),
-		Shine = e("Frame", {
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = shineTransparency,
-			BorderSizePixel = 0,
-			Position = UDim2.new(0, 8, 0, 4),
-			Size = UDim2.new(1, -16, 0, 5),
-			ZIndex = 9,
-		}, {
-			Corner = corner(4),
-		}),
-	})
-end
-
-local function playerSlot(index, active)
-	return e("Frame", {
-		BackgroundTransparency = 1,
-		LayoutOrder = index,
-		Size = UDim2.new(1, 0, 0, 23),
-		ZIndex = 7,
-	}, {
-		Hex = e("Frame", {
-			BackgroundColor3 = Color3.fromRGB(13, 17, 24),
-			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(0, 1),
-			Size = UDim2.fromOffset(20, 20),
-			ZIndex = 8,
-		}, {
-			Corner = corner(4),
-			Stroke = stroke(if active then Color3.fromRGB(0, 255, 60) else Color3.fromRGB(115, 124, 130), 2, 0),
-		}),
-		Name = label({
-			Font = Enum.Font.GothamBlack,
-			Position = UDim2.fromOffset(30, -1),
-			Size = UDim2.new(1, -30, 0, 14),
-			Text = if active then `PLAYER {index}` else "EMPTY SLOT",
-			TextSize = 12,
-			ZIndex = 9,
-		}),
-		Status = label({
-			Font = Enum.Font.GothamBlack,
-			Position = UDim2.fromOffset(30, 11),
-			Size = UDim2.new(1, -30, 0, 11),
-			Text = if active then "STATUS | READY" else "STATUS | OPEN",
-			TextSize = 8,
-			ZIndex = 9,
-		}),
-	})
-end
-
-local function creditsBadge(credits)
-	return e("Frame", {
-		AnchorPoint = Vector2.new(0, 1),
-		BackgroundColor3 = PANEL,
-		BackgroundTransparency = 0.06,
-		BorderSizePixel = 0,
-		Position = UDim2.new(0, 20, 1, -86),
-		Size = UDim2.fromOffset(170, 48),
-		ZIndex = 60,
+		TextStrokeTransparency = if selected then 0.08 else 1,
+		ZIndex = zIndex,
+		[React.Event.Activated] = if enabled then onActivated else nil,
 	}, {
 		Corner = corner(8),
-		Stroke = e("UIStroke", {
-			Color = LIGHTNING,
-			Thickness = 2,
-			Transparency = 0.12,
-		}),
-		Icon = e("Frame", {
-			BackgroundColor3 = LIGHTNING,
-			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(9, 9),
-			Size = UDim2.fromOffset(30, 30),
-			ZIndex = 61,
-		}, {
-			Corner = corner(7),
-			Stroke = stroke(nil, 2, 0),
-			Text = label({
-				Font = Enum.Font.GothamBlack,
-				Size = UDim2.fromScale(1, 1),
-				Text = "CR",
-				TextColor3 = Color3.fromRGB(20, 42, 74),
-				TextSize = 14,
-				TextStrokeTransparency = 1,
-				TextXAlignment = Enum.TextXAlignment.Center,
-				ZIndex = 62,
-			}),
-		}),
-		Title = label({
-			Font = Enum.Font.GothamBlack,
-			Position = UDim2.fromOffset(47, 6),
-			Size = UDim2.new(1, -56, 0, 16),
-			Text = "CR",
-			TextColor3 = LIGHTNING,
-			TextSize = 13,
-			TextStrokeTransparency = 0.18,
-			ZIndex = 61,
-		}),
-		Amount = label({
-			Font = Enum.Font.GothamBlack,
-			Position = UDim2.fromOffset(47, 21),
-			Size = UDim2.new(1, -56, 0, 22),
-			Text = tostring(credits or 0),
-			TextColor3 = WHITE,
-			TextSize = 22,
-			TextStrokeTransparency = 0.05,
-			ZIndex = 61,
-		}),
+		Stroke = stroke(Color3.fromRGB(0, 0, 0), 2, 0),
 	})
+end
+
+local function getDifficultyInfo(name)
+	for _, difficulty in DIFFICULTIES do
+		if difficulty.Name == name then
+			return difficulty
+		end
+	end
+
+	return DIFFICULTIES[1]
+end
+
+local function getNextUnlockedMapIndex(currentIndex, direction)
+	local count = #MAPS
+	local index = currentIndex
+
+	for _ = 1, count do
+		index += direction
+
+		if index > count then
+			index = 1
+		elseif index < 1 then
+			index = count
+		end
+
+		if not MAPS[index].Locked then
+			return index
+		end
+	end
+
+	return currentIndex
 end
 
 local function LobbyQueueApp(props)
 	local network = props.Network
-	local credits, setCredits = React.useState(0)
+	local bestWave, setBestWave = React.useState(0)
 	local prompt, setPrompt = React.useState(nil)
 	local selectedMapIndex, setSelectedMapIndex = React.useState(1)
 	local selectedDifficulty, setSelectedDifficulty = React.useState(DIFFICULTIES[1].Name)
 	local selectedPlayers, setSelectedPlayers = React.useState(1)
 	local status, setStatus = React.useState("")
 	local clock, setClock = React.useState(0)
-	local hoveredMapIndex, setHoveredMapIndex = React.useState(nil)
-	local hoveredDifficulty, setHoveredDifficulty = React.useState(nil)
-	local hoveredPlayers, setHoveredPlayers = React.useState(nil)
 	local createHovered, setCreateHovered = React.useState(false)
-	local leaveHovered, setLeaveHovered = React.useState(false)
-	local mapClickTimes, setMapClickTimes = React.useState({})
-	local difficultyClickTimes, setDifficultyClickTimes = React.useState({})
-	local playerClickTimes, setPlayerClickTimes = React.useState({})
+	local closeHovered, setCloseHovered = React.useState(false)
 	local createClickTime, setCreateClickTime = React.useState(nil)
-	local leaveClickTime, setLeaveClickTime = React.useState(nil)
+	local closeClickTime, setCloseClickTime = React.useState(nil)
 
 	React.useEffect(function()
 		local alive = true
@@ -497,7 +357,7 @@ local function LobbyQueueApp(props)
 
 		network.queuePrompt.listen(function(data)
 			setPrompt(data)
-			setStatus(if data.isCreator then "CONFIGURE THE MISSION" else "WAITING FOR PARTY LEADER")
+			setStatus(if data.isCreator then "" else "Waiting for party leader...")
 			setSelectedPlayers(math.clamp(selectedPlayers, 1, data.maxPlayers))
 		end)
 
@@ -507,7 +367,7 @@ local function LobbyQueueApp(props)
 		end)
 
 		network.storeState.listen(function(data)
-			setCredits(data.coins or 0)
+			setBestWave(data.bestWave or 0)
 		end)
 		network.storeStateRequest.send()
 
@@ -517,86 +377,48 @@ local function LobbyQueueApp(props)
 		end
 	end, {})
 
+	React.useEffect(function()
+		if not prompt then
+			return
+		end
+
+		local selectedMap = MAPS[selectedMapIndex]
+		if not selectedMap or not selectedMap.ImagePath then
+			return
+		end
+
+		task.defer(function()
+			mountMapPreview(selectedMap.ImagePath)
+		end)
+
+		return function()
+			mountMapPreview(nil)
+		end
+	end, { prompt, selectedMapIndex })
+
 	local visible = prompt ~= nil
 	local isCreator = visible and prompt.isCreator
 	local maxPlayers = if visible then prompt.maxPlayers else 4
 	local selectedMap = MAPS[selectedMapIndex]
+	local difficultyInfo = getDifficultyInfo(selectedDifficulty)
 
-	local mapCards = {
-		List = e("UIListLayout", {
+	local partyButtons = {
+		Row = e("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
-			Padding = UDim.new(0, 8),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	}
-
-	for index, map in MAPS do
-		mapCards[`Map{index}`] = mapCard(map, selectedMapIndex == index, hoveredMapIndex == index, mapClickTimes[index], function()
-			if map.Locked then
-				return
-			end
-
-			local nextTimes = table.clone(mapClickTimes)
-			nextTimes[index] = os.clock()
-			setMapClickTimes(nextTimes)
-			setSelectedMapIndex(index)
-		end, function(isHovered)
-			setHoveredMapIndex(if isHovered then index else nil)
-		end, index, clock)
-	end
-
-	local difficultyChildren = {
-		List = e("UIListLayout", {
-			Padding = UDim.new(0, 8),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	}
-
-	for index, difficulty in DIFFICULTIES do
-		difficultyChildren[`Difficulty{index}`] = selectorButton(difficulty.Name, selectedDifficulty == difficulty.Name, hoveredDifficulty == difficulty.Name, difficultyClickTimes[difficulty.Name], difficulty.Color, function()
-			local nextTimes = table.clone(difficultyClickTimes)
-			nextTimes[difficulty.Name] = os.clock()
-			setDifficultyClickTimes(nextTimes)
-			setSelectedDifficulty(difficulty.Name)
-		end, function(isHovered)
-			setHoveredDifficulty(if isHovered then difficulty.Name else nil)
-		end, index, clock)
-	end
-
-	local playerButtons = {
-		Grid = e("UIGridLayout", {
-			CellPadding = UDim2.fromOffset(8, 8),
-			CellSize = UDim2.new(0.5, -4, 0, 36),
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			Padding = UDim.new(0, 12),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 	}
 
 	for count = 1, maxPlayers do
-		playerButtons[`PlayerCount{count}`] = selectorButton(tostring(count), selectedPlayers == count, hoveredPlayers == count, playerClickTimes[count], RED, function()
-			local nextTimes = table.clone(playerClickTimes)
-			nextTimes[count] = os.clock()
-			setPlayerClickTimes(nextTimes)
+		partyButtons[`Size{count}`] = partySizeButton(count, selectedPlayers == count, isCreator, function()
 			setSelectedPlayers(count)
-		end, function(isHovered)
-			setHoveredPlayers(if isHovered then count else nil)
-		end, count, clock)
+		end, count, 8)
 	end
 
-	local rosterChildren = {
-		List = e("UIListLayout", {
-			Padding = UDim.new(0, 3),
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	}
-
-	for index = 1, 4 do
-		rosterChildren[`Slot{index}`] = playerSlot(index, index <= selectedPlayers)
-	end
-
-	local createShine = (math.sin(clock * 7) + 1) / 2
-	local accentFlash = (math.sin(clock * 10) + 1) / 2
-	local createScale = 1 + (if createHovered then 0.04 else 0) + bounceSince(clock, createClickTime, 0.32, 0.14)
-	local leaveScale = 1 + (if leaveHovered then 0.035 else 0) + bounceSince(clock, leaveClickTime, 0.26, 0.12)
+	local createScale = 1 + (if createHovered then 0.03 else 0) + bounceSince(clock, createClickTime, 0.32, 0.12)
+	local closeScale = 1 + (if closeHovered then 0.05 else 0) + bounceSince(clock, closeClickTime, 0.26, 0.1)
 
 	return e("ScreenGui", {
 		DisplayOrder = 40,
@@ -605,11 +427,9 @@ local function LobbyQueueApp(props)
 		Name = "LobbyQueueGui",
 		ResetOnSpawn = false,
 	}, {
-		Credits = creditsBadge(credits),
-
 		Dim = if visible then e("Frame", {
 			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-			BackgroundTransparency = 0.36,
+			BackgroundTransparency = 0.42,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
 			ZIndex = 1,
@@ -617,219 +437,123 @@ local function LobbyQueueApp(props)
 
 		Main = if visible then e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
-			BackgroundTransparency = 1,
-			Position = UDim2.fromScale(0.5, 0.52),
-			Size = UDim2.fromOffset(770, 455),
+			BackgroundColor3 = PANEL,
+			BackgroundTransparency = 0.08,
+			BorderSizePixel = 0,
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromOffset(860, 430),
 			ZIndex = 2,
 		}, {
-			Left = e("Frame", {
-				BackgroundTransparency = 1,
-				Position = UDim2.fromOffset(0, 0),
-				Size = UDim2.fromOffset(440, 455),
-				ZIndex = 3,
-			}, {
-				Featured = e("Frame", {
-					BackgroundColor3 = RED,
-					BorderSizePixel = 0,
-					Position = UDim2.fromOffset(0, 42),
-					Size = UDim2.fromOffset(440, 246),
-					ZIndex = 4,
-				}, {
-					Corner = corner(8),
-					Stroke = stroke(nil, 3, 0),
-					Tab = redTab("LOBBY"),
-					Inner = e("Frame", {
-						BackgroundColor3 = INK,
-						BorderSizePixel = 0,
-						ClipsDescendants = true,
-						Position = UDim2.fromOffset(4, 4),
-						Size = UDim2.new(1, -8, 1, -24),
-						ZIndex = 5,
-					}, {
-						Corner = corner(7),
-						Backdrop = mapBackdrop(selectedMap, 5),
-		TopFlash = e("Frame", {
-			BackgroundColor3 = if selectedMap.Name == "STORM LAB" then LIGHTNING else WHITE,
-			BackgroundTransparency = 0.88 - (accentFlash * 0.08),
-			BorderSizePixel = 0,
-			Position = UDim2.new(0, 0, 0, 0),
-							Size = UDim2.new(1, 0, 0, 6),
-							ZIndex = 13,
-						}, {
-							Corner = corner(6),
-						}),
-						Shade = e("Frame", {
-							BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-							BackgroundTransparency = 0.18,
-							BorderSizePixel = 0,
-							Position = UDim2.new(0, 0, 1, -82),
-							Size = UDim2.new(1, 0, 0, 82),
-							ZIndex = 12,
-						}, {
-							Corner = corner(7),
-						}),
-						Title = label({
-							Font = Enum.Font.GothamBlack,
-							Position = UDim2.new(0, 14, 1, -77),
-							Size = UDim2.new(1, -28, 0, 34),
-							Text = selectedMap.Title,
-							TextSize = 25,
-							ZIndex = 13,
-						}),
-		Meta = label({
-			Font = Enum.Font.GothamBlack,
-			Position = UDim2.new(0, 14, 1, -43),
-			Size = UDim2.new(1, -28, 0, 16),
-			Text = `DIFFICULTY | {selectedDifficulty}`,
-			TextSize = 15,
-			ZIndex = 13,
-		}),
-		Threat = label({
-			Font = Enum.Font.GothamBlack,
-			Position = UDim2.new(0, 14, 1, -24),
-			Size = UDim2.new(1, -28, 0, 14),
-			Text = selectedMap.Threat,
-			TextSize = 12,
-			ZIndex = 13,
-		}),
-	}),
-}),
+			Corner = corner(12),
+			Stroke = stroke(Color3.fromRGB(0, 0, 0), 3, 0),
 
-				MapCards = if isCreator then e("Frame", {
-					BackgroundTransparency = 1,
-					Position = UDim2.fromOffset(0, 312),
-					Size = UDim2.fromOffset(440, 96),
-					ZIndex = 4,
-				}, mapCards) else nil,
-
-				Waiting = if not isCreator then e("Frame", {
-					BackgroundColor3 = RED,
-					BorderSizePixel = 0,
-					Position = UDim2.fromOffset(0, 312),
-					Size = UDim2.fromOffset(440, 72),
-					ZIndex = 4,
-				}, {
-					Corner = corner(8),
-					Stroke = stroke(nil, 2, 0),
-					Message = label({
-						Font = Enum.Font.GothamBlack,
-						Size = UDim2.fromScale(1, 1),
-						Text = "WAITING FOR MATCH START",
-						TextSize = 22,
-						TextXAlignment = Enum.TextXAlignment.Center,
-						ZIndex = 5,
-					}),
-				}) else nil,
-			}),
-
-			Right = e("Frame", {
-				BackgroundColor3 = PANEL,
+			Close = e("TextButton", {
+				AnchorPoint = Vector2.new(1, 0),
+				AutoButtonColor = false,
+				BackgroundColor3 = RED,
 				BorderSizePixel = 0,
-				Position = UDim2.fromOffset(470, 42),
-				Size = UDim2.fromOffset(300, 430),
-				ZIndex = 4,
+				Font = Enum.Font.GothamBlack,
+				Position = UDim2.new(1, -14, 0, 14),
+				Size = UDim2.fromOffset(52, 52),
+				Text = "X",
+				TextColor3 = WHITE,
+				TextSize = 28,
+				TextStrokeTransparency = 0.1,
+				ZIndex = 20,
+				[React.Event.Activated] = function()
+					setCloseClickTime(os.clock())
+					network.queueLeave.send()
+					setPrompt(nil)
+				end,
+				[React.Event.MouseEnter] = function()
+					setCloseHovered(true)
+				end,
+				[React.Event.MouseLeave] = function()
+					setCloseHovered(false)
+				end,
 			}, {
 				Corner = corner(8),
-				Stroke = stroke(RED, 3, 0),
-				Header = e("Frame", {
-					BackgroundColor3 = RED_DARK,
-					BorderSizePixel = 0,
-					Size = UDim2.new(1, 0, 0, 70),
-					ZIndex = 5,
-				}, {
-					Corner = corner(7),
-					Title = label({
-						Font = Enum.Font.GothamBlack,
-						Position = UDim2.fromOffset(12, 7),
-						Size = UDim2.new(1, -24, 0, 32),
-						Text = if isCreator then "MISSION SETUP" else "SQUAD STATUS",
-						TextSize = 24,
-						ZIndex = 6,
-					}),
-					Status = label({
-						Font = Enum.Font.GothamBlack,
-						Position = UDim2.fromOffset(13, 40),
-						Size = UDim2.new(1, -26, 0, 20),
-						Text = status,
-						TextSize = 13,
-						ZIndex = 6,
-					}),
+				Stroke = stroke(Color3.fromRGB(0, 0, 0), 2, 0),
+				Scale = e("UIScale", {
+					Scale = closeScale,
 				}),
+			}),
 
-				Difficulty = if isCreator then e("Frame", {
-					BackgroundTransparency = 1,
-					Position = UDim2.fromOffset(14, 88),
-					Size = UDim2.fromOffset(128, 130),
-					ZIndex = 6,
-				}, {
-					Title = label({
-						Position = UDim2.fromOffset(0, -25),
-						Size = UDim2.fromOffset(130, 22),
-						Text = "DIFFICULTY",
-						TextSize = 15,
-						ZIndex = 7,
-					}),
-					List = e("Frame", {
-						BackgroundTransparency = 1,
-						Size = UDim2.fromScale(1, 1),
-						ZIndex = 7,
-					}, difficultyChildren),
-				}) else nil,
-
-				Players = if isCreator then e("Frame", {
-					BackgroundTransparency = 1,
-					Position = UDim2.fromOffset(158, 88),
-					Size = UDim2.fromOffset(128, 80),
-					ZIndex = 6,
-				}, {
-					Title = label({
-						Position = UDim2.fromOffset(0, -25),
-						Size = UDim2.fromOffset(130, 22),
-						Text = "PLAYERS",
-						TextSize = 15,
-						ZIndex = 7,
-					}),
-					Grid = e("Frame", {
-						BackgroundTransparency = 1,
-						Size = UDim2.fromScale(1, 1),
-						ZIndex = 7,
-					}, playerButtons),
-				}) else nil,
-
-				Roster = e("Frame", {
-					BackgroundColor3 = PANEL_SOFT,
-					BackgroundTransparency = 0.25,
-					BorderSizePixel = 0,
-					Position = UDim2.fromOffset(14, if isCreator then 236 else 92),
-					Size = UDim2.fromOffset(272, if isCreator then 112 else 220),
-					ZIndex = 6,
-				}, {
-					Corner = corner(7),
-					Padding = e("UIPadding", {
-						PaddingLeft = UDim.new(0, 8),
-						PaddingRight = UDim.new(0, 8),
-						PaddingTop = UDim.new(0, 7),
-					}),
-					Stroke = stroke(Color3.fromRGB(92, 38, 51), 1, 0.18),
-					Slots = e("Frame", {
-						BackgroundTransparency = 1,
-						Size = UDim2.new(1, -8, 1, -6),
-						ZIndex = 7,
-					}, rosterChildren),
+			MapColumn = e("Frame", {
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(24, 28),
+				Size = UDim2.fromOffset(220, 374),
+				ZIndex = 3,
+			}, {
+				Title = label({
+					Position = UDim2.fromOffset(0, 0),
+					Size = UDim2.new(1, 0, 0, 28),
+					Text = "Map:",
+					TextSize = 22,
+					ZIndex = 4,
 				}),
+				DropdownFrame = e("Frame", {
+					BackgroundTransparency = 1,
+					Position = UDim2.fromOffset(0, 34),
+					Size = UDim2.new(1, 0, 0, 38),
+					ZIndex = 4,
+				}, {
+					Dropdown = dropdownButton(selectedMap.Name, isCreator, function()
+						setSelectedMapIndex(getNextUnlockedMapIndex(selectedMapIndex, 1))
+					end, 5),
+				}),
+				Preview = e("Frame", {
+					BackgroundTransparency = 1,
+					Position = UDim2.fromOffset(0, 84),
+					Size = UDim2.new(1, 0, 1, -84),
+					ZIndex = 4,
+				}, {
+					PreviewImage = mapPreview(selectedMap, 5),
+				}),
+			}),
 
+			PartyColumn = e("Frame", {
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(268, 28),
+				Size = UDim2.fromOffset(300, 374),
+				ZIndex = 3,
+			}, {
+				Title = label({
+					Position = UDim2.fromOffset(0, 8),
+					Size = UDim2.new(1, 0, 0, 48),
+					Text = "Party Size",
+					TextSize = 34,
+					TextXAlignment = Enum.TextXAlignment.Center,
+					ZIndex = 4,
+				}),
+				Buttons = e("Frame", {
+					BackgroundTransparency = 1,
+					Position = UDim2.fromOffset(0, 88),
+					Size = UDim2.new(1, 0, 0, 80),
+					ZIndex = 4,
+				}, partyButtons),
+				Status = if not isCreator then label({
+					Position = UDim2.fromOffset(0, 188),
+					Size = UDim2.new(1, 0, 0, 28),
+					Text = status,
+					TextColor3 = Color3.fromRGB(200, 205, 214),
+					TextSize = 16,
+					TextXAlignment = Enum.TextXAlignment.Center,
+					ZIndex = 4,
+				}) else nil,
 				Create = if isCreator then e("TextButton", {
-					BackgroundColor3 = RED,
+					AnchorPoint = Vector2.new(0.5, 1),
+					AutoButtonColor = false,
+					BackgroundColor3 = GREEN,
 					BorderSizePixel = 0,
 					Font = Enum.Font.GothamBlack,
-					Position = UDim2.new(0, 14, 1, -48),
-					Size = UDim2.new(1, -28, 0, 36),
+					Position = UDim2.new(0.5, 0, 1, 0),
+					Size = UDim2.new(1, -12, 0, 58),
 					Text = "CREATE",
 					TextColor3 = WHITE,
-					TextSize = 20,
-					TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
+					TextSize = 28,
 					TextStrokeTransparency = 0.08,
-					ZIndex = 8,
+					ZIndex = 6,
 					[React.Event.Activated] = function()
 						setCreateClickTime(os.clock())
 						network.queueCreate.send({
@@ -838,7 +562,7 @@ local function LobbyQueueApp(props)
 							maxPlayers = selectedPlayers,
 						})
 
-						setStatus("WAITING FOR PLAYERS")
+						setStatus("Waiting for players...")
 						setPrompt({
 							isCreator = false,
 							maxPlayers = maxPlayers,
@@ -851,52 +575,103 @@ local function LobbyQueueApp(props)
 						setCreateHovered(false)
 					end,
 				}, {
-					Corner = corner(6),
-					Stroke = stroke(WHITE, 2, 0.05),
+					Corner = corner(8),
+					Stroke = stroke(Color3.fromRGB(0, 0, 0), 2, 0),
 					Scale = e("UIScale", {
 						Scale = createScale,
 					}),
-					Shine = e("Frame", {
-						BackgroundColor3 = WHITE,
-						BackgroundTransparency = if createHovered then 0.78 - (createShine * 0.18) else 0.9 - (createShine * 0.1),
-						BorderSizePixel = 0,
-						Position = UDim2.new(createShine, -70, 0, 0),
-						Rotation = 12,
-						Size = UDim2.fromOffset(44, 46),
-						ZIndex = 9,
-					}, {
-						Corner = corner(5),
-					}),
-				}) else nil,
+				}) else label({
+					AnchorPoint = Vector2.new(0.5, 1),
+					Position = UDim2.new(0.5, 0, 1, 0),
+					Size = UDim2.new(1, -12, 0, 58),
+					Text = "WAITING FOR LEADER",
+					TextColor3 = Color3.fromRGB(200, 205, 214),
+					TextSize = 20,
+					TextXAlignment = Enum.TextXAlignment.Center,
+					ZIndex = 4,
+				}),
+			}),
 
-				Leave = e("TextButton", {
-					BackgroundColor3 = Color3.fromRGB(31, 35, 48),
-					BorderSizePixel = 0,
-					Font = Enum.Font.GothamBlack,
-					Position = UDim2.new(0, 14, 1, if isCreator then -88 else -52),
-					Size = UDim2.new(1, -28, 0, 30),
-					Text = "LEAVE QUEUE",
-					TextColor3 = WHITE,
-					TextSize = 14,
-					TextStrokeColor3 = Color3.fromRGB(0, 0, 0),
-					TextStrokeTransparency = 0.08,
-					ZIndex = 8,
-					[React.Event.Activated] = function()
-						setLeaveClickTime(os.clock())
-						network.queueLeave.send()
-						setPrompt(nil)
-					end,
-					[React.Event.MouseEnter] = function()
-						setLeaveHovered(true)
-					end,
-					[React.Event.MouseLeave] = function()
-						setLeaveHovered(false)
-					end,
+			DifficultyColumn = e("Frame", {
+				BackgroundTransparency = 1,
+				Position = UDim2.fromOffset(592, 28),
+				Size = UDim2.fromOffset(244, 374),
+				ZIndex = 3,
+			}, {
+				Title = label({
+					Position = UDim2.fromOffset(0, 0),
+					Size = UDim2.new(1, 0, 0, 28),
+					Text = "Difficulty:",
+					TextSize = 22,
+					ZIndex = 4,
+				}),
+				DropdownFrame = e("Frame", {
+					BackgroundTransparency = 1,
+					Position = UDim2.fromOffset(0, 34),
+					Size = UDim2.new(1, 0, 0, 38),
+					ZIndex = 4,
 				}, {
-					Corner = corner(6),
-					Stroke = stroke(RED, 2, 0.1),
-					Scale = e("UIScale", {
-						Scale = leaveScale,
+					Dropdown = dropdownButton(difficultyInfo.Display, isCreator, function()
+						local currentIndex = 1
+						for index, difficulty in DIFFICULTIES do
+							if difficulty.Name == selectedDifficulty then
+								currentIndex = index
+								break
+							end
+						end
+
+						local nextIndex = currentIndex % #DIFFICULTIES + 1
+						setSelectedDifficulty(DIFFICULTIES[nextIndex].Name)
+					end, 5),
+				}),
+				Stats = e("Frame", {
+					BackgroundColor3 = PANEL_DARK,
+					BackgroundTransparency = 0.05,
+					BorderSizePixel = 0,
+					Position = UDim2.fromOffset(0, 84),
+					Size = UDim2.new(1, 0, 1, -84),
+					ZIndex = 4,
+				}, {
+					Corner = corner(8),
+					Stroke = stroke(Color3.fromRGB(0, 0, 0), 2, 0),
+					Padding = e("UIPadding", {
+						PaddingBottom = UDim.new(0, 12),
+						PaddingLeft = UDim.new(0, 12),
+						PaddingRight = UDim.new(0, 12),
+						PaddingTop = UDim.new(0, 12),
+					}),
+					TopWave = e("Frame", {
+						BackgroundColor3 = Color3.fromRGB(34, 38, 46),
+						BorderSizePixel = 0,
+						Size = UDim2.new(1, 0, 0, 42),
+						ZIndex = 5,
+					}, {
+						Corner = corner(6),
+						Label = label({
+							Size = UDim2.fromScale(1, 1),
+							Text = `PERSONAL TOP WAVE: {bestWave}`,
+							TextSize = 15,
+							TextXAlignment = Enum.TextXAlignment.Center,
+							ZIndex = 6,
+						}),
+					}),
+					Credits = label({
+						Position = UDim2.fromOffset(0, 58),
+						Size = UDim2.new(1, 0, 0, 28),
+						Text = `{difficultyInfo.CreditsPerKill} Credits per kill`,
+						TextColor3 = GREEN_BRIGHT,
+						TextSize = 18,
+						TextXAlignment = Enum.TextXAlignment.Center,
+						ZIndex = 5,
+					}),
+					Modifier = label({
+						Position = UDim2.fromOffset(0, 92),
+						Size = UDim2.new(1, 0, 0, 28),
+						Text = difficultyInfo.Modifier,
+						TextColor3 = difficultyInfo.ModifierColor,
+						TextSize = 16,
+						TextXAlignment = Enum.TextXAlignment.Center,
+						ZIndex = 5,
 					}),
 				}),
 			}),

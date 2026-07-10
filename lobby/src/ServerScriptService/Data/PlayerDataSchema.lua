@@ -1,6 +1,6 @@
 local PlayerDataSchema = {}
 
-PlayerDataSchema.StoreName = "PlayerData_v2"
+PlayerDataSchema.StoreName = "PlayerData_v3"
 
 PlayerDataSchema.Template = {
 	Stats = {

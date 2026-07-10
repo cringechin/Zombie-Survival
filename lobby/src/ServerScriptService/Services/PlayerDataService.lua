@@ -54,10 +54,20 @@ end
 
 local function clampSlot(slot)
 	if type(slot) ~= "number" then
-		return 1
+		return nil
 	end
 
 	return math.clamp(math.floor(slot), 1, LOADOUT_LIMIT)
+end
+
+local function getFirstEmptyLoadoutSlot(loadout)
+	for index = 1, LOADOUT_LIMIT do
+		if loadout[index] == "" then
+			return index
+		end
+	end
+
+	return 1
 end
 
 local function normalizeProfile(profile)
@@ -105,6 +115,7 @@ local function sendStoreState(player)
 
 	Network.storeState.sendTo({
 		coins = profile.Data.Currency.Coins,
+		bestWave = profile.Data.Stats.BestWave,
 		meteorUnlocked = profile.Data.Weapons.Meteor,
 		meteorEquipped = tableIncludes(profile.Data.DisasterLoadout, "Meteor"),
 		meteorCost = METEOR_COST,
@@ -125,7 +136,7 @@ local function equipWeaponInSlot(profile, weaponName, slot)
 	end
 
 	local loadout = profile.Data.DisasterLoadout
-	local targetSlot = clampSlot(slot)
+	local targetSlot = clampSlot(slot) or getFirstEmptyLoadoutSlot(loadout)
 	removeFromLoadout(loadout, weaponName)
 	loadout[targetSlot] = weaponName
 	return true
@@ -177,7 +188,6 @@ local function handleDisasterPurchaseRequest(data, player)
 	end
 
 	normalizeProfile(profile)
-	local requestedSlot = clampSlot(data and data.slot)
 
 	if not profile.Data.Weapons[weaponName] then
 		if profile.Data.Currency.Coins < cost then
@@ -189,17 +199,7 @@ local function handleDisasterPurchaseRequest(data, player)
 		profile.Data.Weapons[weaponName] = true
 	end
 
-	equipWeaponInSlot(profile, weaponName, requestedSlot)
-	sendStoreState(player)
-end
-
-local function handleDisasterEquipRequest(data, player)
-	local profile = profiles[player]
-	if not profile or typeof(data) ~= "table" or type(data.weapon) ~= "string" then
-		return
-	end
-
-	equipWeaponInSlot(profile, data.weapon, data.slot)
+	equipWeaponInSlot(profile, weaponName, data and data.slot)
 	sendStoreState(player)
 end
 
@@ -214,19 +214,14 @@ function PlayerDataService.hasEquippedDisaster(player)
 end
 
 function PlayerDataService.start()
-	Network.meteorStoreRequest.listen(function(data, player)
+	Network.meteorStoreRequest.listen(function(_, player)
 		handleDisasterPurchaseRequest({
 			weapon = "Meteor",
-			slot = data and data.slot or 1,
 		}, player)
 	end)
 
 	Network.disasterPurchaseRequest.listen(function(data, player)
 		handleDisasterPurchaseRequest(data, player)
-	end)
-
-	Network.disasterEquipRequest.listen(function(data, player)
-		handleDisasterEquipRequest(data, player)
 	end)
 
 	Network.storeStateRequest.listen(function(_, player)
