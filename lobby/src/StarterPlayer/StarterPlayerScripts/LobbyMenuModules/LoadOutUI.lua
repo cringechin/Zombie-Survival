@@ -1,25 +1,17 @@
 local GuiUtil = require(script.Parent.GuiUtil)
 local StoreItems = require(script.Parent.StoreItems)
 
-local StoreUI = {}
+local LoadoutUI = {}
 
+local LOADOUT_LIMIT = 3
 local PURCHASE_STATE = {
 	Meteor = {
-		costKey = "meteorCost",
 		unlockedKey = "meteorUnlocked",
 	},
 	Tornado = {
-		costKey = "tornadoCost",
 		unlockedKey = "tornadoUnlocked",
 	},
 }
-
-local TAB_COLORS = {
-	active = Color3.fromRGB(72, 78, 92),
-	inactive = Color3.fromRGB(42, 46, 56),
-}
-
-local LOADOUT_LIMIT = 3
 
 local function create(className, props)
 	local instance = Instance.new(className)
@@ -69,14 +61,6 @@ local function formatStatValue(value)
 	return tostring(value)
 end
 
-local function isPurchasable(item)
-	return item.Id ~= "Lightning" and PURCHASE_STATE[item.Id] ~= nil
-end
-
-local function canEquipItem(item)
-	return item and (item.Id == "Lightning" or PURCHASE_STATE[item.Id] ~= nil)
-end
-
 local function isOwned(item, storeState)
 	if item.Id == "Lightning" then
 		return true
@@ -84,19 +68,6 @@ local function isOwned(item, storeState)
 
 	local purchaseState = PURCHASE_STATE[item.Id]
 	return purchaseState and storeState[purchaseState.unlockedKey] == true
-end
-
-local function getCoinCost(item, storeState)
-	if item.Id == "Lightning" then
-		return 0
-	end
-
-	local purchaseState = PURCHASE_STATE[item.Id]
-	if purchaseState then
-		return storeState[purchaseState.costKey] or item.CoinCost
-	end
-
-	return item.CoinCost
 end
 
 local function getLoadoutWeapon(storeState, slot)
@@ -118,43 +89,22 @@ local function getEquippedSlot(item, storeState)
 	return nil
 end
 
-local function getPreferredSlot(item, storeState)
-	local equippedSlot = getEquippedSlot(item, storeState)
-	if equippedSlot then
-		return equippedSlot
-	end
-
-	for slot = 1, LOADOUT_LIMIT do
-		if getLoadoutWeapon(storeState, slot) == "" then
-			return slot
+local function getFirstOwnedItem(storeState)
+	for _, item in StoreItems.Items do
+		if isOwned(item, storeState) then
+			return item
 		end
 	end
 
-	return 1
+	return StoreItems.Items[1]
 end
 
-local function hideLegacyStoreContent(storePanel)
-	for _, child in storePanel:GetChildren() do
-		if child:IsA("GuiObject") and child.Name ~= "X" and child.Name ~= "StoreRoot" then
+local function hideLegacyLoadoutContent(loadoutPanel)
+	for _, child in loadoutPanel:GetChildren() do
+		if child:IsA("GuiObject") and child.Name ~= "X" and child.Name ~= "LoadoutRoot" then
 			child.Visible = false
 		end
 	end
-end
-
-local function createTabButton(parent, name, layoutOrder, zIndex)
-	local button = create("TextButton", {
-		Name = name,
-		AutoButtonColor = false,
-		BackgroundColor3 = TAB_COLORS.inactive,
-		BorderSizePixel = 0,
-		LayoutOrder = layoutOrder,
-		Size = UDim2.fromOffset(150, 42),
-		Text = "",
-		ZIndex = zIndex,
-		Parent = parent,
-	})
-	addCorner(button, 8)
-	return button
 end
 
 local function createStarRow(parent, count, zIndex)
@@ -187,9 +137,9 @@ local function createStarRow(parent, count, zIndex)
 	return row
 end
 
-local function createStatRow(parent, stat, layoutOrder, zIndex)
+local function createStatRow(parent, layoutOrder, zIndex)
 	local row = create("Frame", {
-		Name = stat.Label,
+		Name = `Stat{layoutOrder}`,
 		BackgroundTransparency = 1,
 		LayoutOrder = layoutOrder,
 		Size = UDim2.new(1, 0, 0, 28),
@@ -200,47 +150,46 @@ local function createStatRow(parent, stat, layoutOrder, zIndex)
 	local label = styleLabel(create("TextLabel", {
 		Name = "Label",
 		Position = UDim2.fromScale(0, 0),
-		Size = UDim2.fromScale(0.34, 1),
-		Text = stat.Label,
+		Size = UDim2.fromScale(0.42, 1),
+		Text = "",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = zIndex + 1,
 		Parent = row,
-	}), 16)
+	}), 15)
 
 	local current = styleLabel(create("TextLabel", {
 		Name = "Current",
-		Position = UDim2.fromScale(0.34, 0),
+		Position = UDim2.fromScale(0.42, 0),
 		Size = UDim2.fromScale(0.24, 1),
-		Text = formatStatValue(stat.Current),
-		TextColor3 = stat.CurrentColor,
+		Text = "",
+		TextColor3 = Color3.fromRGB(255, 170, 72),
 		TextXAlignment = Enum.TextXAlignment.Right,
 		ZIndex = zIndex + 1,
 		Parent = row,
-	}), 16)
+	}), 15)
 
 	local arrow = styleLabel(create("TextLabel", {
 		Name = "Arrow",
-		Position = UDim2.fromScale(0.58, 0),
+		Position = UDim2.fromScale(0.66, 0),
 		Size = UDim2.fromScale(0.08, 1),
 		Text = ">>",
 		TextXAlignment = Enum.TextXAlignment.Center,
 		ZIndex = zIndex + 1,
 		Parent = row,
-	}), 14)
+	}), 13)
 
 	local upgraded = styleLabel(create("TextLabel", {
 		Name = "Upgraded",
-		Position = UDim2.fromScale(0.66, 0),
-		Size = UDim2.fromScale(0.34, 1),
-		Text = formatStatValue(stat.Upgraded),
-		TextColor3 = stat.UpgradedColor,
+		Position = UDim2.fromScale(0.74, 0),
+		Size = UDim2.fromScale(0.26, 1),
+		Text = "",
+		TextColor3 = Color3.fromRGB(120, 220, 120),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = zIndex + 1,
 		Parent = row,
-	}), 16)
+	}), 15)
 
 	return {
-		row = row,
 		label = label,
 		current = current,
 		arrow = arrow,
@@ -248,86 +197,95 @@ local function createStatRow(parent, stat, layoutOrder, zIndex)
 	}
 end
 
-function StoreUI.setup(storePanel, callbacks)
-	if not storePanel then
+function LoadoutUI.setup(loadoutPanel, callbacks)
+	if not loadoutPanel then
 		return nil
 	end
 
-	hideLegacyStoreContent(storePanel)
+	hideLegacyLoadoutContent(loadoutPanel)
 
-	local existingRoot = storePanel:FindFirstChild("StoreRoot")
+	local existingRoot = loadoutPanel:FindFirstChild("LoadoutRoot")
 	if existingRoot then
 		existingRoot:Destroy()
 	end
 
-	local closeButton = storePanel:FindFirstChild("X", true)
+	local closeButton = loadoutPanel:FindFirstChild("X", true)
 	if closeButton and closeButton:IsA("GuiObject") then
 		closeButton.Visible = true
-		closeButton.ZIndex = storePanel.ZIndex + 40
+		closeButton.ZIndex = loadoutPanel.ZIndex + 40
 	end
 
 	local root = create("Frame", {
-		Name = "StoreRoot",
+		Name = "LoadoutRoot",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.fromScale(0.03, 0.1),
-		Size = UDim2.fromScale(0.94, 0.84),
-		ZIndex = storePanel.ZIndex + 1,
-		Parent = storePanel,
+		Position = UDim2.fromScale(0.03, 0.08),
+		Size = UDim2.fromScale(0.94, 0.86),
+		ZIndex = loadoutPanel.ZIndex + 1,
+		Parent = loadoutPanel,
 	})
 
-	local tabBar = create("Frame", {
-		Name = "TabBar",
-		BackgroundTransparency = 1,
+	local title = styleLabel(create("TextLabel", {
+		Name = "Title",
 		Position = UDim2.fromScale(0, 0),
-		Size = UDim2.fromScale(0.42, 0.1),
+		Size = UDim2.fromScale(1, 0.1),
+		Text = "LOADOUT",
+		TextColor3 = Color3.fromRGB(244, 238, 215),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = root.ZIndex + 1,
+		Parent = root,
+	}), 30)
+	title.TextStrokeTransparency = 0.2
+
+	local subtitle = styleLabel(create("TextLabel", {
+		Name = "Subtitle",
+		Position = UDim2.fromScale(0, 0.08),
+		Size = UDim2.fromScale(1, 0.06),
+		Text = "Choose a slot, then equip owned disasters.",
+		TextColor3 = Color3.fromRGB(186, 197, 214),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = root.ZIndex + 1,
+		Parent = root,
+	}), 14)
+	subtitle.TextStrokeTransparency = 0.62
+
+	local slotsPanel = create("Frame", {
+		Name = "SlotsPanel",
+		BackgroundColor3 = Color3.fromRGB(18, 20, 24),
+		BackgroundTransparency = 0.08,
+		BorderSizePixel = 0,
+		Position = UDim2.fromScale(0, 0.16),
+		Size = UDim2.fromScale(1, 0.16),
 		ZIndex = root.ZIndex + 1,
 		Parent = root,
 	})
+	addCorner(slotsPanel, 10)
+	addStroke(slotsPanel, Color3.fromRGB(90, 96, 110), 2, 0.2)
 
-	local tabLayout = Instance.new("UIListLayout")
-	tabLayout.FillDirection = Enum.FillDirection.Horizontal
-	tabLayout.Padding = UDim.new(0, 10)
-	tabLayout.Parent = tabBar
+	local slotsLayout = Instance.new("UIListLayout")
+	slotsLayout.FillDirection = Enum.FillDirection.Horizontal
+	slotsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	slotsLayout.Padding = UDim.new(0, 10)
+	slotsLayout.Parent = slotsPanel
 
-	local weaponsTab = createTabButton(tabBar, "WeaponsTab", 1, tabBar.ZIndex + 1)
-	local gearsTab = createTabButton(tabBar, "GearsTab", 2, tabBar.ZIndex + 1)
-
-	local weaponsTabText = styleLabel(create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Text = "Weapons",
-		ZIndex = weaponsTab.ZIndex + 1,
-		Parent = weaponsTab,
-	}), 18)
-
-	local gearsTabText = styleLabel(create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Text = "Gears",
-		ZIndex = gearsTab.ZIndex + 1,
-		Parent = gearsTab,
-	}), 18)
+	local slotsPadding = Instance.new("UIPadding")
+	slotsPadding.PaddingTop = UDim.new(0, 12)
+	slotsPadding.PaddingBottom = UDim.new(0, 12)
+	slotsPadding.PaddingLeft = UDim.new(0, 12)
+	slotsPadding.PaddingRight = UDim.new(0, 12)
+	slotsPadding.Parent = slotsPanel
 
 	local content = create("Frame", {
 		Name = "Content",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0, 0.12),
-		Size = UDim2.fromScale(1, 0.88),
+		Position = UDim2.fromScale(0, 0.35),
+		Size = UDim2.fromScale(1, 0.65),
 		ZIndex = root.ZIndex + 1,
 		Parent = root,
 	})
 
-	local weaponsView = create("Frame", {
-		Name = "WeaponsView",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = content.ZIndex + 1,
-		Parent = content,
-	})
-
 	local grid = create("ScrollingFrame", {
-		Name = "ItemGrid",
+		Name = "OwnedWeaponsGrid",
 		BackgroundColor3 = Color3.fromRGB(18, 20, 24),
 		BackgroundTransparency = 0.08,
 		BorderSizePixel = 0,
@@ -335,8 +293,8 @@ function StoreUI.setup(storePanel, callbacks)
 		Position = UDim2.fromScale(0, 0),
 		ScrollBarThickness = 6,
 		Size = UDim2.fromScale(0.56, 1),
-		ZIndex = weaponsView.ZIndex + 1,
-		Parent = weaponsView,
+		ZIndex = content.ZIndex + 1,
+		Parent = content,
 	})
 	addCorner(grid, 10)
 	addStroke(grid, Color3.fromRGB(90, 96, 110), 2, 0.2)
@@ -348,10 +306,10 @@ function StoreUI.setup(storePanel, callbacks)
 	gridLayout.Parent = grid
 
 	local gridPadding = Instance.new("UIPadding")
+	gridPadding.PaddingTop = UDim.new(0, 12)
 	gridPadding.PaddingBottom = UDim.new(0, 12)
 	gridPadding.PaddingLeft = UDim.new(0, 12)
 	gridPadding.PaddingRight = UDim.new(0, 12)
-	gridPadding.PaddingTop = UDim.new(0, 12)
 	gridPadding.Parent = grid
 
 	local detailPanel = create("Frame", {
@@ -361,28 +319,28 @@ function StoreUI.setup(storePanel, callbacks)
 		BorderSizePixel = 0,
 		Position = UDim2.fromScale(0.59, 0),
 		Size = UDim2.fromScale(0.41, 1),
-		ZIndex = weaponsView.ZIndex + 1,
-		Parent = weaponsView,
+		ZIndex = content.ZIndex + 1,
+		Parent = content,
 	})
 	addCorner(detailPanel, 10)
 	addStroke(detailPanel, Color3.fromRGB(90, 96, 110), 2, 0.2)
 
 	local detailPadding = Instance.new("UIPadding")
+	detailPadding.PaddingTop = UDim.new(0, 16)
 	detailPadding.PaddingBottom = UDim.new(0, 16)
 	detailPadding.PaddingLeft = UDim.new(0, 16)
 	detailPadding.PaddingRight = UDim.new(0, 16)
-	detailPadding.PaddingTop = UDim.new(0, 16)
 	detailPadding.Parent = detailPanel
 
 	local detailName = styleLabel(create("TextLabel", {
 		Name = "WeaponName",
 		Position = UDim2.fromScale(0, 0),
 		Size = UDim2.fromScale(1, 0.1),
-		Text = "Select a weapon",
+		Text = "",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = detailPanel.ZIndex + 2,
 		Parent = detailPanel,
-	}), 28)
+	}), 26)
 
 	local detailRarity = styleLabel(create("TextLabel", {
 		Name = "Rarity",
@@ -392,14 +350,26 @@ function StoreUI.setup(storePanel, callbacks)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = detailPanel.ZIndex + 2,
 		Parent = detailPanel,
-	}), 18)
+	}), 17)
+
+	local detailInfo = styleLabel(create("TextLabel", {
+		Name = "Info",
+		Position = UDim2.fromScale(0, 0.16),
+		Size = UDim2.fromScale(1, 0.06),
+		Text = "",
+		TextColor3 = Color3.fromRGB(186, 197, 214),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = detailPanel.ZIndex + 2,
+		Parent = detailPanel,
+	}), 13)
+	detailInfo.TextStrokeTransparency = 0.6
 
 	local previewFrame = create("Frame", {
 		Name = "PreviewFrame",
 		BackgroundColor3 = Color3.fromRGB(28, 32, 40),
 		BorderSizePixel = 0,
-		Position = UDim2.fromScale(0, 0.16),
-		Size = UDim2.fromScale(1, 0.3),
+		Position = UDim2.fromScale(0, 0.24),
+		Size = UDim2.fromScale(1, 0.28),
 		ZIndex = detailPanel.ZIndex + 2,
 		Parent = detailPanel,
 	})
@@ -420,8 +390,8 @@ function StoreUI.setup(storePanel, callbacks)
 	local statsFrame = create("Frame", {
 		Name = "Stats",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0, 0.49),
-		Size = UDim2.fromScale(1, 0.18),
+		Position = UDim2.fromScale(0, 0.55),
+		Size = UDim2.fromScale(1, 0.23),
 		ZIndex = detailPanel.ZIndex + 2,
 		Parent = detailPanel,
 	})
@@ -431,124 +401,35 @@ function StoreUI.setup(storePanel, callbacks)
 	statsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	statsLayout.Parent = statsFrame
 
-	local loadoutTitle = styleLabel(create("TextLabel", {
-		Name = "LoadoutTitle",
-		Position = UDim2.fromScale(0, 0.7),
-		Size = UDim2.fromScale(1, 0.06),
-		Text = "Loadout Slot",
-		TextColor3 = Color3.fromRGB(205, 214, 225),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		ZIndex = detailPanel.ZIndex + 2,
-		Parent = detailPanel,
-	}), 15)
-	loadoutTitle.TextStrokeTransparency = 0.35
-
-	local loadoutRow = create("Frame", {
-		Name = "LoadoutRow",
-		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0, 0.76),
-		Size = UDim2.fromScale(1, 0.1),
-		ZIndex = detailPanel.ZIndex + 2,
-		Parent = detailPanel,
-	})
-
-	local loadoutLayout = Instance.new("UIListLayout")
-	loadoutLayout.FillDirection = Enum.FillDirection.Horizontal
-	loadoutLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-	loadoutLayout.Padding = UDim.new(0, 8)
-	loadoutLayout.Parent = loadoutRow
-
-	-- Loadout management moved into the dedicated LoadOut screen.
-	loadoutTitle.Visible = false
-	loadoutRow.Visible = false
-
-	local purchaseRow = create("Frame", {
-		Name = "PurchaseRow",
-		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0, 0.8),
-		Size = UDim2.fromScale(1, 0.12),
-		ZIndex = detailPanel.ZIndex + 2,
-		Parent = detailPanel,
-	})
-
-	local purchaseLayout = Instance.new("UIListLayout")
-	purchaseLayout.FillDirection = Enum.FillDirection.Horizontal
-	purchaseLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-	purchaseLayout.Padding = UDim.new(0, 10)
-	purchaseLayout.Parent = purchaseRow
-
-	local coinButton = create("TextButton", {
-		Name = "CoinPurchase",
+	local equipButton = create("TextButton", {
+		Name = "EquipButton",
 		AutoButtonColor = false,
 		BackgroundColor3 = Color3.fromRGB(58, 118, 196),
 		BorderSizePixel = 0,
-		LayoutOrder = 1,
-		Size = UDim2.fromOffset(190, 46),
+		Position = UDim2.fromScale(0, 0.82),
+		Size = UDim2.fromScale(1, 0.18),
 		Text = "",
-		ZIndex = purchaseRow.ZIndex + 1,
-		Parent = purchaseRow,
+		ZIndex = detailPanel.ZIndex + 2,
+		Parent = detailPanel,
 	})
-	addCorner(coinButton, 8)
+	addCorner(equipButton, 8)
 
-	local coinText = styleLabel(create("TextLabel", {
+	local equipText = styleLabel(create("TextLabel", {
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
-		Text = "0 CR",
-		ZIndex = coinButton.ZIndex + 1,
-		Parent = coinButton,
-	}), 18)
-
-	local robuxButton = create("TextButton", {
-		Name = "RobuxPurchase",
-		AutoButtonColor = false,
-		BackgroundColor3 = Color3.fromRGB(72, 168, 88),
-		BorderSizePixel = 0,
-		LayoutOrder = 2,
-		Size = UDim2.fromOffset(110, 46),
 		Text = "",
-		Visible = false,
-		ZIndex = purchaseRow.ZIndex + 1,
-		Parent = purchaseRow,
-	})
-	addCorner(robuxButton, 8)
-
-	local robuxText = styleLabel(create("TextLabel", {
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Text = "R$ 0",
-		ZIndex = robuxButton.ZIndex + 1,
-		Parent = robuxButton,
+		ZIndex = equipButton.ZIndex + 1,
+		Parent = equipButton,
 	}), 18)
-
-	local gearsView = create("Frame", {
-		Name = "GearsView",
-		BackgroundColor3 = Color3.fromRGB(18, 20, 24),
-		BackgroundTransparency = 0.08,
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		Visible = false,
-		ZIndex = content.ZIndex + 1,
-		Parent = content,
-	})
-	addCorner(gearsView, 10)
-
-	local gearsPlaceholder = styleLabel(create("TextLabel", {
-		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0.1, 0.4),
-		Size = UDim2.fromScale(0.8, 0.2),
-		Text = "Gears coming soon.",
-		ZIndex = gearsView.ZIndex + 1,
-		Parent = gearsView,
-	}), 24)
 
 	local controller = {
 		selectedItem = StoreItems.Items[1],
 		selectedSlot = 1,
 		storeState = {},
 		gridTiles = {},
-		purchaseActionEnabled = false,
 		slotButtons = {},
 		statRows = {},
+		equipActionEnabled = false,
 	}
 
 	for slot = 1, LOADOUT_LIMIT do
@@ -558,18 +439,18 @@ function StoreUI.setup(storePanel, callbacks)
 			BackgroundColor3 = Color3.fromRGB(34, 38, 46),
 			BorderSizePixel = 0,
 			LayoutOrder = slot,
-			Size = UDim2.new(1 / LOADOUT_LIMIT, -6, 1, 0),
+			Size = UDim2.new(1 / LOADOUT_LIMIT, -8, 1, 0),
 			Text = "",
-			ZIndex = loadoutRow.ZIndex + 1,
-			Parent = loadoutRow,
+			ZIndex = slotsPanel.ZIndex + 1,
+			Parent = slotsPanel,
 		})
-		addCorner(slotButton, 7)
+		addCorner(slotButton, 8)
 		local slotStroke = addStroke(slotButton, Color3.fromRGB(78, 86, 102), 2, 0.25)
 
 		local slotNumber = styleLabel(create("TextLabel", {
 			Name = "SlotNumber",
 			Position = UDim2.fromScale(0, 0.08),
-			Size = UDim2.fromScale(0.3, 0.84),
+			Size = UDim2.fromScale(0.28, 0.84),
 			Text = tostring(slot),
 			TextColor3 = Color3.fromRGB(164, 181, 204),
 			TextXAlignment = Enum.TextXAlignment.Center,
@@ -580,8 +461,8 @@ function StoreUI.setup(storePanel, callbacks)
 
 		local slotWeapon = styleLabel(create("TextLabel", {
 			Name = "Weapon",
-			Position = UDim2.fromScale(0.3, 0.08),
-			Size = UDim2.fromScale(0.66, 0.84),
+			Position = UDim2.fromScale(0.28, 0.08),
+			Size = UDim2.fromScale(0.68, 0.84),
 			Text = "Empty",
 			TextColor3 = Color3.fromRGB(220, 226, 235),
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -598,15 +479,7 @@ function StoreUI.setup(storePanel, callbacks)
 		}
 	end
 
-	local function setActiveTab(tabName)
-		local weaponsActive = tabName == "Weapons"
-		weaponsTab.BackgroundColor3 = if weaponsActive then TAB_COLORS.active else TAB_COLORS.inactive
-		gearsTab.BackgroundColor3 = if weaponsActive then TAB_COLORS.inactive else TAB_COLORS.active
-		weaponsView.Visible = weaponsActive
-		gearsView.Visible = not weaponsActive
-	end
-
-	local function updateLoadoutSlots()
+	local function updateSlotButtons()
 		for slot, refs in controller.slotButtons do
 			local weaponName = getLoadoutWeapon(controller.storeState, slot)
 			local selected = controller.selectedSlot == slot
@@ -629,6 +502,7 @@ function StoreUI.setup(storePanel, callbacks)
 
 	local function updateGridTile(tileRefs, item, selected)
 		local owned = isOwned(item, controller.storeState)
+		local equippedSlot = getEquippedSlot(item, controller.storeState)
 		local accent = item.AccentColor or Color3.fromRGB(255, 224, 154)
 
 		tileRefs.button.BackgroundColor3 = if selected
@@ -639,9 +513,9 @@ function StoreUI.setup(storePanel, callbacks)
 		tileRefs.preview.Image = item.Image or ""
 		tileRefs.preview.ImageColor3 = if owned then Color3.fromRGB(255, 255, 255) else Color3.fromRGB(120, 120, 120)
 		tileRefs.preview.BackgroundColor3 = item.PreviewColor or Color3.fromRGB(48, 54, 64)
-		tileRefs.notOwned.Visible = not owned and isPurchasable(item)
-		tileRefs.equipped.Visible = false
-		tileRefs.equipped.Text = ""
+		tileRefs.locked.Visible = not owned
+		tileRefs.equipped.Visible = equippedSlot ~= nil
+		tileRefs.equipped.Text = if equippedSlot then `SLOT {equippedSlot}` else ""
 		tileRefs.stroke.Color = if selected then accent else Color3.fromRGB(90, 96, 110)
 		tileRefs.stroke.Thickness = if selected then 3 else 2
 	end
@@ -653,9 +527,8 @@ function StoreUI.setup(storePanel, callbacks)
 		end
 
 		local owned = isOwned(item, controller.storeState)
-		local coinCost = getCoinCost(item, controller.storeState)
-		local coins = controller.storeState.coins or 0
-		local canAfford = coins >= coinCost
+		local equippedSlot = getEquippedSlot(item, controller.storeState)
+		local selectedSlot = controller.selectedSlot
 
 		detailName.Text = item.Name
 		detailRarity.Text = item.Rarity or ""
@@ -667,6 +540,7 @@ function StoreUI.setup(storePanel, callbacks)
 		for index, stat in item.Stats or {} do
 			local rowRefs = controller.statRows[index]
 			if rowRefs then
+				rowRefs.label.Text = stat.Label
 				rowRefs.current.Text = formatStatValue(stat.Current)
 				rowRefs.current.TextColor3 = stat.CurrentColor
 				rowRefs.upgraded.Text = formatStatValue(stat.Upgraded)
@@ -674,46 +548,42 @@ function StoreUI.setup(storePanel, callbacks)
 			end
 		end
 
-		controller.purchaseActionEnabled = false
+		controller.equipActionEnabled = false
 
-		if not canEquipItem(item) then
-			coinButton.BackgroundColor3 = Color3.fromRGB(76, 82, 94)
-			coinText.Text = "UNAVAILABLE"
-		elseif owned then
-			coinButton.BackgroundColor3 = Color3.fromRGB(58, 92, 72)
-			coinText.Text = "OWNED"
-		elseif isPurchasable(item) and canAfford then
-			coinButton.BackgroundColor3 = Color3.fromRGB(58, 118, 196)
-			coinText.Text = `BUY | {coinCost} CR`
-			controller.purchaseActionEnabled = true
-		elseif not isPurchasable(item) then
-			coinButton.BackgroundColor3 = Color3.fromRGB(76, 82, 94)
-			coinText.Text = "UNAVAILABLE"
+		if not owned then
+			detailInfo.Text = "Unlock this disaster in Store first."
+			equipButton.BackgroundColor3 = Color3.fromRGB(76, 82, 94)
+			equipText.Text = "UNLOCK IN STORE"
+		elseif equippedSlot == selectedSlot then
+			detailInfo.Text = `Already equipped in slot {selectedSlot}.`
+			equipButton.BackgroundColor3 = Color3.fromRGB(58, 92, 72)
+			equipText.Text = `EQUIPPED S{selectedSlot}`
 		else
-			coinButton.BackgroundColor3 = Color3.fromRGB(98, 56, 62)
-			coinText.Text = `NEED {coinCost - coins} CR`
+			detailInfo.Text = if equippedSlot
+				then `Currently in slot {equippedSlot}.`
+				else "Not equipped yet."
+			equipButton.BackgroundColor3 = if equippedSlot then Color3.fromRGB(88, 106, 156) else Color3.fromRGB(58, 118, 196)
+			equipText.Text = `EQUIP TO S{selectedSlot}`
+			controller.equipActionEnabled = true
 		end
 
-		coinButton.Active = controller.purchaseActionEnabled
-		coinButton.AutoButtonColor = false
-
-		if item.RobuxCost and item.RobuxCost > 0 and not owned and isPurchasable(item) then
-			robuxButton.Visible = true
-			robuxText.Text = `R$ {item.RobuxCost}`
-			robuxButton.Active = false
-			robuxButton.BackgroundColor3 = Color3.fromRGB(52, 120, 64)
-		else
-			robuxButton.Visible = false
-		end
+		equipButton.Active = controller.equipActionEnabled
+		equipButton.AutoButtonColor = false
 	end
 
 	function controller.setStoreState(storeState)
 		controller.storeState = storeState or {}
 
+		if not controller.selectedItem or not isOwned(controller.selectedItem, controller.storeState) then
+			controller.selectedItem = getFirstOwnedItem(controller.storeState)
+		end
+
 		for itemId, tileRefs in controller.gridTiles do
 			local item = tileRefs.item
 			updateGridTile(tileRefs, item, controller.selectedItem and controller.selectedItem.Id == itemId)
 		end
+
+		updateSlotButtons()
 		updateDetailPanel()
 	end
 
@@ -722,12 +592,13 @@ function StoreUI.setup(storePanel, callbacks)
 		for itemId, tileRefs in controller.gridTiles do
 			updateGridTile(tileRefs, tileRefs.item, item and item.Id == itemId)
 		end
+		updateSlotButtons()
 		updateDetailPanel()
 	end
 
 	function controller.selectSlot(slot)
 		controller.selectedSlot = math.clamp(math.floor(slot), 1, LOADOUT_LIMIT)
-		updateLoadoutSlots()
+		updateSlotButtons()
 		updateDetailPanel()
 	end
 
@@ -770,18 +641,18 @@ function StoreUI.setup(storePanel, callbacks)
 		stars.Position = UDim2.fromScale(0, 0.72)
 		stars.Size = UDim2.fromScale(1, 0.2)
 
-		local notOwned = styleLabel(create("TextLabel", {
-			Name = "NotOwned",
+		local locked = styleLabel(create("TextLabel", {
+			Name = "Locked",
 			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
 			BackgroundTransparency = 0.35,
 			Position = UDim2.fromScale(0.05, 0.28),
 			Size = UDim2.fromScale(0.9, 0.4),
-			Text = "NOT OWNED",
+			Text = "LOCKED",
 			TextColor3 = Color3.fromRGB(220, 220, 220),
 			ZIndex = tileButton.ZIndex + 3,
 			Parent = tileButton,
 		}), 12)
-		addCorner(notOwned, 6)
+		addCorner(locked, 6)
 
 		local equipped = styleLabel(create("TextLabel", {
 			Name = "Equipped",
@@ -802,7 +673,7 @@ function StoreUI.setup(storePanel, callbacks)
 			button = tileButton,
 			equipped = equipped,
 			item = item,
-			notOwned = notOwned,
+			locked = locked,
 			preview = preview,
 			stroke = stroke,
 		}
@@ -813,8 +684,9 @@ function StoreUI.setup(storePanel, callbacks)
 		GuiUtil.animateButton(tileButton)
 	end
 
-	for index, stat in controller.selectedItem.Stats or {} do
-		controller.statRows[index] = createStatRow(statsFrame, stat, index, statsFrame.ZIndex + 1)
+	local statCount = if controller.selectedItem and controller.selectedItem.Stats then #controller.selectedItem.Stats else 3
+	for index = 1, statCount do
+		controller.statRows[index] = createStatRow(statsFrame, index, statsFrame.ZIndex + 1)
 	end
 
 	gridLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
@@ -822,31 +694,21 @@ function StoreUI.setup(storePanel, callbacks)
 	end)
 	grid.CanvasSize = UDim2.fromOffset(0, gridLayout.AbsoluteContentSize.Y + 24)
 
-	weaponsTab.Activated:Connect(function()
-		setActiveTab("Weapons")
-	end)
-	gearsTab.Activated:Connect(function()
-		setActiveTab("Gears")
-	end)
-	GuiUtil.animateButton(weaponsTab)
-	GuiUtil.animateButton(gearsTab)
-
-	coinButton.Activated:Connect(function()
+	equipButton.Activated:Connect(function()
 		local item = controller.selectedItem
-		if not item or not canEquipItem(item) or not controller.purchaseActionEnabled then
+		if not item or not controller.equipActionEnabled then
 			return
 		end
 
-		if callbacks.onPurchase then
-			callbacks.onPurchase(item)
+		if callbacks.onEquip then
+			callbacks.onEquip(item, controller.selectedSlot)
 		end
 	end)
-	GuiUtil.animateButton(coinButton)
+	GuiUtil.animateButton(equipButton)
 
-	setActiveTab("Weapons")
-	controller.selectItem(StoreItems.Items[1])
+	controller.setStoreState({})
 
 	return controller
 end
 
-return StoreUI
+return LoadoutUI

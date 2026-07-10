@@ -190,17 +190,45 @@ local function handleDisasterPurchaseRequest(data, player)
 
 	normalizeProfile(profile)
 
-	if not profile.Data.Weapons[weaponName] then
-		if profile.Data.Currency.Coins < cost then
-			sendStoreState(player)
-			return
-		end
-
-		profile.Data.Currency.Coins -= cost
-		profile.Data.Weapons[weaponName] = true
+	if profile.Data.Weapons[weaponName] then
+		sendStoreState(player)
+		return
 	end
 
-	equipWeaponInSlot(profile, weaponName, data and data.slot)
+	if profile.Data.Currency.Coins < cost then
+		sendStoreState(player)
+		return
+	end
+
+	profile.Data.Currency.Coins -= cost
+	profile.Data.Weapons[weaponName] = true
+	sendStoreState(player)
+end
+
+local function handleLoadoutEquipRequest(data, player)
+	local profile = profiles[player]
+	if not profile or typeof(data) ~= "table" or type(data.weapon) ~= "string" then
+		return
+	end
+
+	local slot = clampSlot(data.slot)
+	if not slot then
+		return
+	end
+
+	local weaponName = data.weapon
+	if not DISASTER_COSTS[weaponName] then
+		return
+	end
+
+	normalizeProfile(profile)
+
+	if not profile.Data.Weapons[weaponName] then
+		sendStoreState(player)
+		return
+	end
+
+	equipWeaponInSlot(profile, weaponName, slot)
 	sendStoreState(player)
 end
 
@@ -223,6 +251,10 @@ function PlayerDataService.start()
 
 	Network.disasterPurchaseRequest.listen(function(data, player)
 		handleDisasterPurchaseRequest(data, player)
+	end)
+
+	Network.loadoutEquipRequest.listen(function(data, player)
+		handleLoadoutEquipRequest(data, player)
 	end)
 
 	Network.storeStateRequest.listen(function(_, player)

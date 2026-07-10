@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local GuiUtil = require(script.Parent.GuiUtil)
 local StoreUI = require(script.Parent.StoreUI)
+local LoadoutUI = require(script.Parent.LoadOutUI)
 local UpdateLog = require(script.Parent.UpdateLog)
 local Network = require(ReplicatedStorage.Shared.Network.Packets)
 
@@ -11,14 +12,24 @@ local MenuController = {}
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local storeController = nil
+local loadoutController = nil
 local creditsAmountLabel = nil
 
 local PANEL_NAMES = {
 	Store = true,
+	LoadOut = true,
 	UpdateLog = true,
 	Daily = true,
 	Party = true,
 	Quests = true,
+}
+
+local PANEL_NAME_ALIASES = {
+	LoadOut = { "LoadOut", "Inventory" },
+}
+
+local BUTTON_NAME_ALIASES = {
+	LoadOut = { "LoadOut", "Inventory" },
 }
 
 local function findLobbyGui()
@@ -83,22 +94,138 @@ local function getNamedButton(leftButtons, name)
 	return nil
 end
 
+local function isPanelObject(instance)
+	return instance and instance:IsA("GuiObject") and not GuiUtil.isButton(instance)
+end
+
+local function getButtonForPanel(leftButtons, panelName)
+	local directButton = getNamedButton(leftButtons, panelName)
+	if directButton then
+		return directButton
+	end
+
+	local aliases = BUTTON_NAME_ALIASES[panelName]
+	if not aliases then
+		return nil
+	end
+
+	for _, alias in aliases do
+		local aliasButton = getNamedButton(leftButtons, alias)
+		if aliasButton then
+			return aliasButton
+		end
+	end
+
+	return nil
+end
+
 local function collectPanels(gui)
 	local panels = {}
 	local mainFrame = getMainFrame(gui)
 
 	for panelName in PANEL_NAMES do
-		local panel = mainFrame and mainFrame:FindFirstChild(panelName)
-		if not panel then
-			panel = gui:FindFirstChild(panelName, true)
+		local panel = nil
+		local aliases = PANEL_NAME_ALIASES[panelName]
+
+		if aliases then
+			for _, alias in aliases do
+				panel = mainFrame and mainFrame:FindFirstChild(alias)
+				if not panel then
+					panel = gui:FindFirstChild(alias, true)
+				end
+
+				if isPanelObject(panel) then
+					break
+				end
+			end
+		else
+			panel = mainFrame and mainFrame:FindFirstChild(panelName)
+			if not panel then
+				panel = gui:FindFirstChild(panelName, true)
+			end
 		end
 
-		if panel and panel:IsA("GuiObject") then
+		if isPanelObject(panel) then
 			panels[panelName] = panel
 		end
 	end
 
 	return panels
+end
+
+local function createFallbackCloseButton(panel)
+	local closeButton = Instance.new("TextButton")
+	closeButton.Name = "X"
+	closeButton.AutoButtonColor = false
+	closeButton.AnchorPoint = Vector2.new(1, 0)
+	closeButton.BackgroundColor3 = Color3.fromRGB(86, 52, 58)
+	closeButton.BorderSizePixel = 0
+	closeButton.Position = UDim2.fromScale(0.985, 0.02)
+	closeButton.Size = UDim2.fromOffset(42, 42)
+	closeButton.Text = "X"
+	closeButton.TextXAlignment = Enum.TextXAlignment.Center
+	closeButton.TextYAlignment = Enum.TextYAlignment.Center
+	closeButton.ZIndex = panel.ZIndex + 40
+	closeButton.Parent = panel
+
+	GuiUtil.styleText(closeButton, 20, 10)
+	closeButton.TextColor3 = Color3.fromRGB(245, 233, 233)
+	closeButton.TextStrokeTransparency = 0.35
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = closeButton
+
+	return closeButton
+end
+
+local function ensureLoadoutPanel(gui, panels)
+	if panels.LoadOut then
+		return panels.LoadOut
+	end
+
+	local mainFrame = getMainFrame(gui)
+	if not mainFrame then
+		return nil
+	end
+
+	local template = panels.Store or panels.UpdateLog
+	local panel = Instance.new("Frame")
+	panel.Name = "LoadOut"
+	panel.Visible = false
+	panel.Parent = mainFrame
+
+	if template then
+		panel.AnchorPoint = template.AnchorPoint
+		panel.Position = template.Position
+		panel.Size = template.Size
+		panel.BackgroundColor3 = template.BackgroundColor3
+		panel.BackgroundTransparency = template.BackgroundTransparency
+		panel.BorderColor3 = template.BorderColor3
+		panel.BorderSizePixel = template.BorderSizePixel
+		panel.ZIndex = template.ZIndex
+	else
+		panel.AnchorPoint = Vector2.new(0.5, 0.5)
+		panel.Position = UDim2.fromScale(0.5, 0.5)
+		panel.Size = UDim2.fromScale(0.6, 0.7)
+		panel.BackgroundColor3 = Color3.fromRGB(28, 32, 40)
+		panel.BackgroundTransparency = 0.08
+		panel.BorderSizePixel = 0
+		panel.ZIndex = 20
+	end
+
+	local closeTemplate = if template then template:FindFirstChild("X", true) else nil
+	if closeTemplate and GuiUtil.isButton(closeTemplate) then
+		local closeButton = closeTemplate:Clone()
+		closeButton.Visible = true
+		closeButton.ZIndex = panel.ZIndex + 40
+		closeButton.Parent = panel
+	else
+		createFallbackCloseButton(panel)
+	end
+
+	panels.LoadOut = panel
+	return panel
 end
 
 local function showOnlyPanel(panels, panelName)
@@ -331,8 +458,22 @@ local function setupStore(storePanel)
 	end
 
 	storeController = StoreUI.setup(storePanel, {
-		onPurchase = function(item, slot)
+		onPurchase = function(item)
 			Network.disasterPurchaseRequest.send({
+				weapon = item.Id,
+			})
+		end,
+	})
+end
+
+local function setupLoadout(loadoutPanel)
+	if not loadoutPanel then
+		return
+	end
+
+	loadoutController = LoadoutUI.setup(loadoutPanel, {
+		onEquip = function(item, slot)
+			Network.loadoutEquipRequest.send({
 				weapon = item.Id,
 				slot = slot,
 			})
@@ -353,7 +494,7 @@ local function bindButtons(gui, leftButtons, panels)
 	end
 
 	for panelName in panels do
-		local button = getNamedButton(leftButtons, panelName)
+		local button = getButtonForPanel(leftButtons, panelName)
 		if button then
 			button.Activated:Connect(function()
 				showOnlyPanel(panels, panelName)
@@ -383,6 +524,7 @@ function MenuController.start()
 
 	local leftButtons = getLeftButtons(gui)
 	local panels = collectPanels(gui)
+	ensureLoadoutPanel(gui, panels)
 
 	if not panels.UpdateLog then
 		warn("MainUI.Frame.UpdateLog was not found. Update log panel could not be shown.")
@@ -392,6 +534,10 @@ function MenuController.start()
 		warn("MainUI.Frame.Store was not found. Store panel could not be opened.")
 	end
 
+	if not panels.LoadOut then
+		warn("MainUI.Frame.LoadOut (or Inventory) was not found. Loadout panel could not be opened.")
+	end
+
 	gui.Enabled = true
 	creditsAmountLabel = setupCreditsHud(gui)
 	setCreditsAmount(0)
@@ -399,11 +545,15 @@ function MenuController.start()
 		if storeController then
 			storeController.setStoreState(data)
 		end
+		if loadoutController then
+			loadoutController.setStoreState(data)
+		end
 		setCreditsAmount(data and data.coins)
 	end)
 
 	setupUpdateLog(panels.UpdateLog)
 	setupStore(panels.Store)
+	setupLoadout(panels.LoadOut)
 	Network.storeStateRequest.send()
 	showOnlyPanel(panels, "UpdateLog")
 

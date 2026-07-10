@@ -45,6 +45,13 @@ return ByteNet.defineNamespace("lobby", function()
 			}),
 		}),
 
+		loadoutEquipRequest = ByteNet.definePacket({
+			value = ByteNet.struct({
+				weapon = ByteNet.string,
+				slot = ByteNet.uint8,
+			}),
+		}),
+
 		storeStateRequest = ByteNet.definePacket({
 			value = ByteNet.nothing,
 		}),
