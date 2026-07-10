@@ -13,6 +13,7 @@ local METEOR_COST = 150
 local TORNADO_COST = 300
 local LOADOUT_LIMIT = 3
 local DISASTER_COSTS = {
+	Lightning = 0,
 	Meteor = METEOR_COST,
 	Tornado = TORNADO_COST,
 }

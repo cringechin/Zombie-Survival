@@ -12,6 +12,7 @@ local TORNADO_CONFIG = DisasterWeaponConfig.Tornado
 
 local localPlayer = Players.LocalPlayer
 local tool = script.Parent
+local lastLocalCastAt = 0
 
 local function isLocalPlayerAlive()
 	if localPlayer:GetAttribute("IsDowned") == true then
@@ -67,11 +68,17 @@ tool.Activated:Connect(function()
 		return
 	end
 
+	local now = os.clock()
 	local cooldownEndsAt = tool:GetAttribute("CooldownEndsAt")
-	if typeof(cooldownEndsAt) == "number" and cooldownEndsAt > os.clock() then
+	if typeof(cooldownEndsAt) == "number" and cooldownEndsAt > now then
 		return
 	end
 
+	if now - lastLocalCastAt < TORNADO_CONFIG.Cooldown then
+		return
+	end
+
+	lastLocalCastAt = now
 	local direction, targetPosition = getFlatAimDirection()
 	if not direction then
 		return
@@ -79,7 +86,7 @@ tool.Activated:Connect(function()
 
 	local cooldown = TORNADO_CONFIG.Cooldown
 	tool:SetAttribute("CooldownDuration", cooldown)
-	tool:SetAttribute("CooldownEndsAt", os.clock() + cooldown)
+	tool:SetAttribute("CooldownEndsAt", now + cooldown)
 
 	ClientFeedback.cameraKick(0.9, 0.18)
 	ClientFeedback.screenFlash(Color3.fromRGB(190, 235, 235), 0.14, 0.82)

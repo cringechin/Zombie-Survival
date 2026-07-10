@@ -106,7 +106,14 @@ end
 
 local function createBoltGlowSegment(fromPosition, toPosition, coreThickness, lifetime, color)
 	createBoltSegment(fromPosition, toPosition, coreThickness * 4.2, lifetime + 0.04, color, 0.64)
-	createBoltSegment(fromPosition, toPosition, coreThickness * 1.7, lifetime + 0.02, Color3.fromRGB(104, 220, 255), 0.14)
+	createBoltSegment(
+		fromPosition,
+		toPosition,
+		coreThickness * 1.7,
+		lifetime + 0.02,
+		Color3.fromRGB(104, 220, 255),
+		0.14
+	)
 	createBoltSegment(fromPosition, toPosition, coreThickness, lifetime, Color3.fromRGB(245, 255, 255), 0)
 end
 
@@ -402,15 +409,7 @@ local function playMeteorNamedVFX(assetType, position, options)
 		vfx = anchor
 	end
 
-	prepareVFXDescendants(
-		vfx,
-		lifetime,
-		emitDuration,
-		emitScale,
-		activeDuration,
-		postDisableDuration,
-		hideCarrierParts
-	)
+	prepareVFXDescendants(vfx, lifetime, emitDuration, emitScale, activeDuration, postDisableDuration, hideCarrierParts)
 	return true
 end
 
@@ -481,7 +480,9 @@ end
 
 local function animateMeteor(meteor, fromPosition, toPosition, travelTime)
 	local direction = toPosition - fromPosition
-	local lookAt = if direction.Magnitude > 0.05 then CFrame.lookAt(fromPosition, toPosition) else CFrame.new(fromPosition)
+	local lookAt = if direction.Magnitude > 0.05
+		then CFrame.lookAt(fromPosition, toPosition)
+		else CFrame.new(fromPosition)
 	local startTime = os.clock()
 	local connection = nil
 
@@ -495,7 +496,9 @@ local function animateMeteor(meteor, fromPosition, toPosition, travelTime)
 		local alpha = math.clamp((os.clock() - startTime) / travelTime, 0, 1)
 		local position = fromPosition:Lerp(toPosition, alpha)
 		local remainingDirection = toPosition - position
-		local cframe = if remainingDirection.Magnitude > 0.05 then CFrame.lookAt(position, toPosition) else CFrame.new(position)
+		local cframe = if remainingDirection.Magnitude > 0.05
+			then CFrame.lookAt(position, toPosition)
+			else CFrame.new(position)
 		pivotMeteor(meteor, cframe)
 
 		if alpha >= 1 then
@@ -592,7 +595,9 @@ local function createLightningBeamVFX(startPosition, endPosition, config, isChai
 		end)
 	end
 
-	local branchCount = if isChain then math.max(1, math.floor((config.BranchCount or 0) * 0.35)) else (config.BranchCount or 0)
+	local branchCount = if isChain
+		then math.max(1, math.floor((config.BranchCount or 0) * 0.35))
+		else (config.BranchCount or 0)
 	for _ = 1, branchCount do
 		local branchIndex = math.random(2, math.max(2, #boltPoints - 1))
 		local branchStart = boltPoints[branchIndex]
@@ -867,11 +872,8 @@ local function getMeteorRaycastParams(player)
 end
 
 local function getGroundImpactPosition(player, position)
-	local result = Workspace:Raycast(
-		position + Vector3.new(0, 80, 0),
-		Vector3.new(0, -180, 0),
-		getMeteorRaycastParams(player)
-	)
+	local result =
+		Workspace:Raycast(position + Vector3.new(0, 80, 0), Vector3.new(0, -180, 0), getMeteorRaycastParams(player))
 
 	return result and result.Position or position
 end
@@ -881,11 +883,8 @@ local function getTornadoGroundPosition(player, position)
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local referenceY = root and root.Position.Y or position.Y
 	local rayOrigin = Vector3.new(position.X, referenceY + TORNADO_GROUND_RAY_HEIGHT, position.Z)
-	local result = Workspace:Raycast(
-		rayOrigin,
-		Vector3.new(0, -TORNADO_GROUND_RAY_DEPTH, 0),
-		getMeteorRaycastParams(player)
-	)
+	local result =
+		Workspace:Raycast(rayOrigin, Vector3.new(0, -TORNADO_GROUND_RAY_DEPTH, 0), getMeteorRaycastParams(player))
 
 	if result then
 		local verticalOffset = result.Position.Y - referenceY
@@ -959,7 +958,9 @@ local function mountLooseTornadoVFX(vfx, anchor)
 	for _, descendant in vfx:GetDescendants() do
 		if descendant:IsA("Attachment") then
 			local parent = descendant.Parent
-			if not parent or (not parent:IsA("BasePart") and not parent:IsA("Bone") and parent ~= Workspace.Terrain) then
+			if
+				not parent or (not parent:IsA("BasePart") and not parent:IsA("Bone") and parent ~= Workspace.Terrain)
+			then
 				descendant.Parent = anchor
 			end
 		elseif descendant:IsA("ParticleEmitter") then
@@ -1237,7 +1238,12 @@ local function releaseTornadoVictim(candidate, position, config)
 	local velocity = (direction * (config.ReleaseHorizontal or 72)) + Vector3.new(0, config.ReleaseUpward or 38, 0)
 
 	if candidate.NPC.ApplyTornadoRelease then
-		candidate.NPC:ApplyTornadoRelease(direction, config.ReleaseHorizontal, config.ReleaseUpward, config.ReleaseRagdollDuration)
+		candidate.NPC:ApplyTornadoRelease(
+			direction,
+			config.ReleaseHorizontal,
+			config.ReleaseUpward,
+			config.ReleaseRagdollDuration
+		)
 	else
 		root.AssemblyLinearVelocity = velocity
 	end
@@ -1295,10 +1301,12 @@ local function runTornadoProjectile(player, startPosition, direction, config, to
 			nextRetargetAt = now + (config.TrackingRetargetInterval or 0.35)
 			local target = findTornadoTrackingTarget(position, config)
 			if target and target.Root then
-				local toTarget = Vector3.new(target.Root.Position.X - position.X, 0, target.Root.Position.Z - position.Z)
+				local toTarget =
+					Vector3.new(target.Root.Position.X - position.X, 0, target.Root.Position.Z - position.Z)
 				local targetDirection = unitOrZero(toTarget)
 				if targetDirection ~= Vector3.zero then
-					travelDirection = unitOrZero(travelDirection:Lerp(targetDirection, if tornadoLevel >= 5 then 0.72 else 0.48))
+					travelDirection =
+						unitOrZero(travelDirection:Lerp(targetDirection, if tornadoLevel >= 5 then 0.72 else 0.48))
 				end
 			end
 		end
@@ -1474,7 +1482,10 @@ local function upgradeMeteor(player)
 	local config = DisasterWeaponConfig.Meteor
 	local currentLevel = PlayerDataService.getMeteorLevel(player)
 
-	if not PlayerDataService.hasUnlockedWeapon(player, "Meteor") or not PlayerDataService.hasEquippedWeapon(player, "Meteor") then
+	if
+		not PlayerDataService.hasUnlockedWeapon(player, "Meteor")
+		or not PlayerDataService.hasEquippedWeapon(player, "Meteor")
+	then
 		return
 	end
 
@@ -1508,7 +1519,10 @@ local function upgradeTornado(player)
 	local config = DisasterWeaponConfig.Tornado
 	local currentLevel = PlayerDataService.getTornadoLevel(player)
 
-	if not PlayerDataService.hasUnlockedWeapon(player, "Tornado") or not PlayerDataService.hasEquippedWeapon(player, "Tornado") then
+	if
+		not PlayerDataService.hasUnlockedWeapon(player, "Tornado")
+		or not PlayerDataService.hasEquippedWeapon(player, "Tornado")
+	then
 		return
 	end
 
@@ -1540,22 +1554,6 @@ local function canCast(player, weaponName, config, cooldownOverride)
 		return false, nil
 	end
 
-	local playerCastTimes = lastCastTimesByUserId[player.UserId]
-	if not playerCastTimes then
-		playerCastTimes = {}
-		lastCastTimesByUserId[player.UserId] = playerCastTimes
-	end
-
-	local lastCastTime = playerCastTimes[weaponName] or 0
-	local cooldown = cooldownOverride or config.Cooldown
-	local now = os.clock()
-	if now - lastCastTime < cooldown then
-		return false, nil
-	end
-
-	playerCastTimes[weaponName] = now
-	tool:SetAttribute("CooldownDuration", cooldown)
-	tool:SetAttribute("CooldownEndsAt", now + cooldown)
 	return true, tool
 end
 
@@ -1646,7 +1644,8 @@ local function getAirStrikeTargetPosition(rootPosition, direction, range, reques
 		return fallbackTargetPosition
 	end
 
-	local flatDelta = Vector3.new(requestedTargetPosition.X - rootPosition.X, 0, requestedTargetPosition.Z - rootPosition.Z)
+	local flatDelta =
+		Vector3.new(requestedTargetPosition.X - rootPosition.X, 0, requestedTargetPosition.Z - rootPosition.Z)
 	local distance = flatDelta.Magnitude
 	if distance <= 0.05 then
 		return fallbackTargetPosition
@@ -1679,7 +1678,10 @@ end
 local function castMeteor(player, direction, targetPosition)
 	local config = DisasterWeaponConfig.Meteor
 	local meteorLevel = PlayerDataService.getMeteorLevel(player)
-	if not PlayerDataService.hasUnlockedWeapon(player, "Meteor") or not PlayerDataService.hasEquippedWeapon(player, "Meteor") then
+	if
+		not PlayerDataService.hasUnlockedWeapon(player, "Meteor")
+		or not PlayerDataService.hasEquippedWeapon(player, "Meteor")
+	then
 		return
 	end
 
@@ -1704,7 +1706,9 @@ local function castMeteor(player, direction, targetPosition)
 	end
 
 	flatDirection = flatDirection.Unit
-	local levelConfig = config.AirStrikeLevels[meteorLevel] or config.HandCastLevels[meteorLevel] or config.HandCastLevels[1]
+	local levelConfig = config.AirStrikeLevels[meteorLevel]
+		or config.HandCastLevels[meteorLevel]
+		or config.HandCastLevels[1]
 
 	if meteorLevel >= 4 then
 		castAirStrikeMeteor(player, flatDirection, levelConfig, config, root, targetPosition)

@@ -71,26 +71,12 @@ local function hasAnyEquippedDisaster(loadout)
 	return false
 end
 
-local function equipWeaponInFirstOpenSlot(loadout, weaponName)
-	if tableIncludes(loadout, weaponName) then
-		return
-	end
-
-	for index = 1, LOADOUT_LIMIT do
-		if loadout[index] == "" then
-			loadout[index] = weaponName
-			return
-		end
-	end
-end
-
 local function applyGameplayTestWeaponOverrides(data)
 	if not GameConfig.TestUnlockTornado then
 		return
 	end
 
 	data.UnlockedWeapons.Tornado = true
-	equipWeaponInFirstOpenSlot(data.DisasterLoadout, "Tornado")
 end
 
 local function normalizeProfile(profile)

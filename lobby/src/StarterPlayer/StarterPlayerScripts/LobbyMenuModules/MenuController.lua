@@ -11,6 +11,7 @@ local MenuController = {}
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local storeController = nil
+local creditsAmountLabel = nil
 
 local PANEL_NAMES = {
 	Store = true,
@@ -135,6 +136,102 @@ local function setExistingText(textObject, text, maxTextSize, xAlignment, yAlign
 	return true
 end
 
+local function addCorner(parent, radius)
+	local corner = parent:FindFirstChildOfClass("UICorner")
+	if not corner then
+		corner = Instance.new("UICorner")
+		corner.Parent = parent
+	end
+	corner.CornerRadius = UDim.new(0, radius)
+	return corner
+end
+
+local function addStroke(parent, color, thickness, transparency)
+	local stroke = parent:FindFirstChildOfClass("UIStroke")
+	if not stroke then
+		stroke = Instance.new("UIStroke")
+		stroke.Parent = parent
+	end
+	stroke.Color = color
+	stroke.Thickness = thickness or 2
+	stroke.Transparency = transparency or 0
+	return stroke
+end
+
+local function createText(parent, name, text, position, size, textSize, zIndex)
+	local label = Instance.new("TextLabel")
+	label.Name = name
+	label.BackgroundTransparency = 1
+	label.Position = position
+	label.Size = size
+	label.Text = text
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.ZIndex = zIndex
+	label.Parent = parent
+	GuiUtil.styleText(label, textSize, 10)
+	return label
+end
+
+local function setupCreditsHud(gui)
+	local existing = gui:FindFirstChild("CreditsHud")
+	if existing then
+		local existingAmount = existing:FindFirstChild("Amount", true)
+		if existingAmount and existingAmount:IsA("TextLabel") then
+			return existingAmount
+		end
+
+		existing:Destroy()
+	end
+
+	local root = Instance.new("Frame")
+	root.Name = "CreditsHud"
+	root.AnchorPoint = Vector2.new(1, 1)
+	root.BackgroundColor3 = Color3.fromRGB(16, 20, 28)
+	root.BackgroundTransparency = 0.08
+	root.BorderSizePixel = 0
+	root.Position = UDim2.new(1, -24, 1, -24)
+	root.Size = UDim2.fromOffset(190, 56)
+	root.ZIndex = 80
+	root.Parent = gui
+	addCorner(root, 12)
+	addStroke(root, Color3.fromRGB(255, 214, 86), 2, 0.12)
+
+	local icon = Instance.new("Frame")
+	icon.Name = "DollarIcon"
+	icon.BackgroundColor3 = Color3.fromRGB(255, 214, 86)
+	icon.BorderSizePixel = 0
+	icon.Position = UDim2.fromOffset(10, 8)
+	icon.Size = UDim2.fromOffset(40, 40)
+	icon.ZIndex = root.ZIndex + 1
+	icon.Parent = root
+	addCorner(icon, 20)
+
+	local dollar = createText(icon, "Dollar", "$", UDim2.fromScale(0, 0), UDim2.fromScale(1, 1), 28, icon.ZIndex + 1)
+	dollar.TextColor3 = Color3.fromRGB(22, 26, 34)
+	dollar.TextStrokeTransparency = 1
+	dollar.TextXAlignment = Enum.TextXAlignment.Center
+
+	local title =
+		createText(root, "Title", "CREDITS", UDim2.fromOffset(60, 7), UDim2.fromOffset(118, 18), 12, root.ZIndex + 1)
+	title.TextColor3 = Color3.fromRGB(190, 199, 214)
+	title.TextStrokeTransparency = 0.75
+
+	local amount =
+		createText(root, "Amount", "0", UDim2.fromOffset(60, 24), UDim2.fromOffset(118, 26), 25, root.ZIndex + 1)
+	amount.TextColor3 = Color3.fromRGB(255, 246, 190)
+	amount.TextStrokeTransparency = 0.18
+	return amount
+end
+
+local function setCreditsAmount(amount)
+	if not creditsAmountLabel then
+		return
+	end
+
+	creditsAmountLabel.Text = tostring(math.max(math.floor(tonumber(amount) or 0), 0))
+end
+
 local function getOrCreateUpdateListText(updateList)
 	if not updateList or not updateList:IsA("GuiObject") then
 		return nil
@@ -204,7 +301,11 @@ local function setupUpdateLog(updatePanel)
 	end
 
 	if not setExistingText(updatesText, UpdateLog.Body, 18, Enum.TextXAlignment.Left, Enum.TextYAlignment.Top) then
-		warn(`UpdateLog.UpdateList is {if updatesContainer then updatesContainer.ClassName else "missing"}, but it has no existing TextLabel/TextButton/TextBox to populate. Found: {describeChildren(updatesContainer)}`)
+		warn(
+			`UpdateLog.UpdateList is {if updatesContainer then updatesContainer.ClassName else "missing"}, but it has no existing TextLabel/TextButton/TextBox to populate. Found: {describeChildren(
+				updatesContainer
+			)}`
+		)
 	end
 
 	local eventButtons = {}
@@ -230,9 +331,10 @@ local function setupStore(storePanel)
 	end
 
 	storeController = StoreUI.setup(storePanel, {
-		onPurchase = function(item)
+		onPurchase = function(item, slot)
 			Network.disasterPurchaseRequest.send({
 				weapon = item.Id,
+				slot = slot,
 			})
 		end,
 	})
@@ -291,10 +393,13 @@ function MenuController.start()
 	end
 
 	gui.Enabled = true
+	creditsAmountLabel = setupCreditsHud(gui)
+	setCreditsAmount(0)
 	Network.storeState.listen(function(data)
 		if storeController then
 			storeController.setStoreState(data)
 		end
+		setCreditsAmount(data and data.coins)
 	end)
 
 	setupUpdateLog(panels.UpdateLog)

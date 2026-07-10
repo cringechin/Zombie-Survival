@@ -23,6 +23,7 @@ local tool = script.Parent
 local previewPart = nil
 local previewTween = nil
 local getFlatAimDirection
+local lastLocalCastAt = 0
 
 local function isLocalPlayerAlive()
 	if localPlayer:GetAttribute("IsDowned") == true then
@@ -96,14 +97,11 @@ local function ensurePreviewPart()
 	light.Range = METEOR_CONFIG.FireRadius * 0.55
 	light.Parent = ring
 
-	previewTween = TweenService:Create(
-		ring,
-		TweenInfo.new(0.42, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-		{
+	previewTween =
+		TweenService:Create(ring, TweenInfo.new(0.42, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
 			Size = Vector3.new(0.16, METEOR_CONFIG.FireRadius * 2.18, METEOR_CONFIG.FireRadius * 2.18),
 			Transparency = 0.24,
-		}
-	)
+		})
 	previewTween:Play()
 
 	return previewPart
@@ -212,11 +210,17 @@ tool.Activated:Connect(function()
 		return
 	end
 
+	local now = os.clock()
 	local cooldownEndsAt = tool:GetAttribute("CooldownEndsAt")
-	if typeof(cooldownEndsAt) == "number" and cooldownEndsAt > os.clock() then
+	if typeof(cooldownEndsAt) == "number" and cooldownEndsAt > now then
 		return
 	end
 
+	if now - lastLocalCastAt < getMeteorCooldown() then
+		return
+	end
+
+	lastLocalCastAt = now
 	local direction, targetPosition = getFlatAimDirection()
 	if not direction then
 		return
@@ -224,13 +228,13 @@ tool.Activated:Connect(function()
 
 	showLockedLandingPreview(targetPosition)
 	Sounds.play("danger")
-	ClientFeedback.cameraKick(if getMeteorLevel() >= 4 then 1.65 else 1.1, 0.22)
+	ClientFeedback.cameraKick(getMeteorLevel() >= 4 and 1.65 or 1.1, 0.22)
 	ClientFeedback.screenFlash(Color3.fromRGB(255, 132, 54), 0.18, 0.88)
 	ClientFeedback.castPulse(Color3.fromRGB(255, 132, 54))
 
 	local cooldown = getMeteorCooldown()
 	tool:SetAttribute("CooldownDuration", cooldown)
-	tool:SetAttribute("CooldownEndsAt", os.clock() + cooldown)
+	tool:SetAttribute("CooldownEndsAt", now + cooldown)
 
 	Network.disasterWeaponCast.send({
 		weapon = "Meteor",

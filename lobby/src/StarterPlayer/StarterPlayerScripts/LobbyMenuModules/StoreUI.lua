@@ -19,6 +19,8 @@ local TAB_COLORS = {
 	inactive = Color3.fromRGB(42, 46, 56),
 }
 
+local LOADOUT_LIMIT = 3
+
 local function create(className, props)
 	local instance = Instance.new(className)
 	for key, value in props do
@@ -71,6 +73,10 @@ local function isPurchasable(item)
 	return item.Id ~= "Lightning" and PURCHASE_STATE[item.Id] ~= nil
 end
 
+local function canEquipItem(item)
+	return item and (item.Id == "Lightning" or PURCHASE_STATE[item.Id] ~= nil)
+end
+
 local function isOwned(item, storeState)
 	if item.Id == "Lightning" then
 		return true
@@ -91,6 +97,40 @@ local function getCoinCost(item, storeState)
 	end
 
 	return item.CoinCost
+end
+
+local function getLoadoutWeapon(storeState, slot)
+	local weaponName = storeState and storeState[`loadoutSlot{slot}`]
+	return if type(weaponName) == "string" then weaponName else ""
+end
+
+local function getEquippedSlot(item, storeState)
+	if not item then
+		return nil
+	end
+
+	for slot = 1, LOADOUT_LIMIT do
+		if getLoadoutWeapon(storeState, slot) == item.Id then
+			return slot
+		end
+	end
+
+	return nil
+end
+
+local function getPreferredSlot(item, storeState)
+	local equippedSlot = getEquippedSlot(item, storeState)
+	if equippedSlot then
+		return equippedSlot
+	end
+
+	for slot = 1, LOADOUT_LIMIT do
+		if getLoadoutWeapon(storeState, slot) == "" then
+			return slot
+		end
+	end
+
+	return 1
 end
 
 local function hideLegacyStoreContent(storePanel)
@@ -358,8 +398,8 @@ function StoreUI.setup(storePanel, callbacks)
 		Name = "PreviewFrame",
 		BackgroundColor3 = Color3.fromRGB(28, 32, 40),
 		BorderSizePixel = 0,
-		Position = UDim2.fromScale(0, 0.18),
-		Size = UDim2.fromScale(1, 0.34),
+		Position = UDim2.fromScale(0, 0.16),
+		Size = UDim2.fromScale(1, 0.3),
 		ZIndex = detailPanel.ZIndex + 2,
 		Parent = detailPanel,
 	})
@@ -380,8 +420,8 @@ function StoreUI.setup(storePanel, callbacks)
 	local statsFrame = create("Frame", {
 		Name = "Stats",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0, 0.56),
-		Size = UDim2.fromScale(1, 0.24),
+		Position = UDim2.fromScale(0, 0.49),
+		Size = UDim2.fromScale(1, 0.18),
 		ZIndex = detailPanel.ZIndex + 2,
 		Parent = detailPanel,
 	})
@@ -391,10 +431,37 @@ function StoreUI.setup(storePanel, callbacks)
 	statsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	statsLayout.Parent = statsFrame
 
+	local loadoutTitle = styleLabel(create("TextLabel", {
+		Name = "LoadoutTitle",
+		Position = UDim2.fromScale(0, 0.7),
+		Size = UDim2.fromScale(1, 0.06),
+		Text = "Loadout Slot",
+		TextColor3 = Color3.fromRGB(205, 214, 225),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = detailPanel.ZIndex + 2,
+		Parent = detailPanel,
+	}), 15)
+	loadoutTitle.TextStrokeTransparency = 0.35
+
+	local loadoutRow = create("Frame", {
+		Name = "LoadoutRow",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromScale(0, 0.76),
+		Size = UDim2.fromScale(1, 0.1),
+		ZIndex = detailPanel.ZIndex + 2,
+		Parent = detailPanel,
+	})
+
+	local loadoutLayout = Instance.new("UIListLayout")
+	loadoutLayout.FillDirection = Enum.FillDirection.Horizontal
+	loadoutLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	loadoutLayout.Padding = UDim.new(0, 8)
+	loadoutLayout.Parent = loadoutRow
+
 	local purchaseRow = create("Frame", {
 		Name = "PurchaseRow",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromScale(0, 0.84),
+		Position = UDim2.fromScale(0, 0.88),
 		Size = UDim2.fromScale(1, 0.12),
 		ZIndex = detailPanel.ZIndex + 2,
 		Parent = detailPanel,
@@ -412,7 +479,7 @@ function StoreUI.setup(storePanel, callbacks)
 		BackgroundColor3 = Color3.fromRGB(58, 118, 196),
 		BorderSizePixel = 0,
 		LayoutOrder = 1,
-		Size = UDim2.fromOffset(150, 46),
+		Size = UDim2.fromOffset(190, 46),
 		Text = "",
 		ZIndex = purchaseRow.ZIndex + 1,
 		Parent = purchaseRow,
@@ -472,10 +539,60 @@ function StoreUI.setup(storePanel, callbacks)
 
 	local controller = {
 		selectedItem = StoreItems.Items[1],
+		selectedSlot = 1,
 		storeState = {},
 		gridTiles = {},
+		purchaseActionEnabled = false,
+		slotButtons = {},
 		statRows = {},
 	}
+
+	for slot = 1, LOADOUT_LIMIT do
+		local slotButton = create("TextButton", {
+			Name = `LoadoutSlot{slot}`,
+			AutoButtonColor = false,
+			BackgroundColor3 = Color3.fromRGB(34, 38, 46),
+			BorderSizePixel = 0,
+			LayoutOrder = slot,
+			Size = UDim2.new(1 / LOADOUT_LIMIT, -6, 1, 0),
+			Text = "",
+			ZIndex = loadoutRow.ZIndex + 1,
+			Parent = loadoutRow,
+		})
+		addCorner(slotButton, 7)
+		local slotStroke = addStroke(slotButton, Color3.fromRGB(78, 86, 102), 2, 0.25)
+
+		local slotNumber = styleLabel(create("TextLabel", {
+			Name = "SlotNumber",
+			Position = UDim2.fromScale(0, 0.08),
+			Size = UDim2.fromScale(0.3, 0.84),
+			Text = tostring(slot),
+			TextColor3 = Color3.fromRGB(164, 181, 204),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = slotButton.ZIndex + 1,
+			Parent = slotButton,
+		}), 14)
+		slotNumber.TextStrokeTransparency = 0.45
+
+		local slotWeapon = styleLabel(create("TextLabel", {
+			Name = "Weapon",
+			Position = UDim2.fromScale(0.3, 0.08),
+			Size = UDim2.fromScale(0.66, 0.84),
+			Text = "Empty",
+			TextColor3 = Color3.fromRGB(220, 226, 235),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = slotButton.ZIndex + 1,
+			Parent = slotButton,
+		}), 13)
+		slotWeapon.TextStrokeTransparency = 0.45
+
+		controller.slotButtons[slot] = {
+			button = slotButton,
+			number = slotNumber,
+			stroke = slotStroke,
+			weapon = slotWeapon,
+		}
+	end
 
 	local function setActiveTab(tabName)
 		local weaponsActive = tabName == "Weapons"
@@ -485,9 +602,31 @@ function StoreUI.setup(storePanel, callbacks)
 		gearsView.Visible = not weaponsActive
 	end
 
+	local function updateLoadoutSlots()
+		for slot, refs in controller.slotButtons do
+			local weaponName = getLoadoutWeapon(controller.storeState, slot)
+			local selected = controller.selectedSlot == slot
+			local selectedWeaponInSlot = controller.selectedItem and controller.selectedItem.Id == weaponName
+			local accent = if selectedWeaponInSlot and controller.selectedItem
+				then controller.selectedItem.AccentColor or Color3.fromRGB(120, 190, 255)
+				else Color3.fromRGB(92, 102, 122)
+
+			refs.button.BackgroundColor3 = if selected
+				then Color3.fromRGB(52, 62, 82)
+				elseif weaponName ~= "" then Color3.fromRGB(34, 39, 50)
+				else Color3.fromRGB(24, 27, 34)
+			refs.number.TextColor3 = if selected then Color3.fromRGB(255, 226, 117) else Color3.fromRGB(164, 181, 204)
+			refs.stroke.Color = if selected then Color3.fromRGB(255, 226, 117) else accent
+			refs.stroke.Thickness = if selected then 3 else 2
+			refs.weapon.Text = if weaponName ~= "" then weaponName else "Empty"
+			refs.weapon.TextColor3 = if weaponName ~= "" then Color3.fromRGB(226, 233, 242) else Color3.fromRGB(130, 140, 154)
+		end
+	end
+
 	local function updateGridTile(tileRefs, item, selected)
 		local owned = isOwned(item, controller.storeState)
 		local accent = item.AccentColor or Color3.fromRGB(255, 224, 154)
+		local equippedSlot = getEquippedSlot(item, controller.storeState)
 
 		tileRefs.button.BackgroundColor3 = if selected
 			then Color3.fromRGB(48, 58, 78)
@@ -498,6 +637,8 @@ function StoreUI.setup(storePanel, callbacks)
 		tileRefs.preview.ImageColor3 = if owned then Color3.fromRGB(255, 255, 255) else Color3.fromRGB(120, 120, 120)
 		tileRefs.preview.BackgroundColor3 = item.PreviewColor or Color3.fromRGB(48, 54, 64)
 		tileRefs.notOwned.Visible = not owned and isPurchasable(item)
+		tileRefs.equipped.Visible = equippedSlot ~= nil
+		tileRefs.equipped.Text = if equippedSlot then `SLOT {equippedSlot}` else ""
 		tileRefs.stroke.Color = if selected then accent else Color3.fromRGB(90, 96, 110)
 		tileRefs.stroke.Thickness = if selected then 3 else 2
 	end
@@ -510,6 +651,10 @@ function StoreUI.setup(storePanel, callbacks)
 
 		local owned = isOwned(item, controller.storeState)
 		local coinCost = getCoinCost(item, controller.storeState)
+		local equippedSlot = getEquippedSlot(item, controller.storeState)
+		local selectedSlot = controller.selectedSlot or getPreferredSlot(item, controller.storeState)
+		local coins = controller.storeState.coins or 0
+		local canAfford = coins >= coinCost
 
 		detailName.Text = item.Name
 		detailRarity.Text = item.Rarity or ""
@@ -528,16 +673,31 @@ function StoreUI.setup(storePanel, callbacks)
 			end
 		end
 
-		if owned or not isPurchasable(item) then
-			coinButton.BackgroundColor3 = Color3.fromRGB(58, 92, 72)
-			coinText.Text = "OWNED"
-			coinButton.Active = false
-			coinButton.AutoButtonColor = false
-		else
+		controller.purchaseActionEnabled = false
+
+		if not canEquipItem(item) then
+			coinButton.BackgroundColor3 = Color3.fromRGB(76, 82, 94)
+			coinText.Text = "UNAVAILABLE"
+		elseif owned then
+			if equippedSlot == selectedSlot then
+				coinButton.BackgroundColor3 = Color3.fromRGB(58, 92, 72)
+				coinText.Text = `EQUIPPED S{selectedSlot}`
+			else
+				coinButton.BackgroundColor3 = if equippedSlot then Color3.fromRGB(88, 106, 156) else Color3.fromRGB(58, 118, 196)
+				coinText.Text = if equippedSlot then `MOVE TO S{selectedSlot}` else `EQUIP S{selectedSlot}`
+				controller.purchaseActionEnabled = true
+			end
+		elseif canAfford then
 			coinButton.BackgroundColor3 = Color3.fromRGB(58, 118, 196)
-			coinText.Text = `{coinCost} CR`
-			coinButton.Active = true
+			coinText.Text = `BUY S{selectedSlot} | {coinCost} CR`
+			controller.purchaseActionEnabled = true
+		else
+			coinButton.BackgroundColor3 = Color3.fromRGB(98, 56, 62)
+			coinText.Text = `NEED {coinCost - coins} CR`
 		end
+
+		coinButton.Active = controller.purchaseActionEnabled
+		coinButton.AutoButtonColor = false
 
 		if item.RobuxCost and item.RobuxCost > 0 and not owned and isPurchasable(item) then
 			robuxButton.Visible = true
@@ -551,19 +711,39 @@ function StoreUI.setup(storePanel, callbacks)
 
 	function controller.setStoreState(storeState)
 		controller.storeState = storeState or {}
+		if controller.selectedItem then
+			controller.selectedSlot = getPreferredSlot(controller.selectedItem, controller.storeState)
+		end
+
 		for itemId, tileRefs in controller.gridTiles do
 			local item = tileRefs.item
 			updateGridTile(tileRefs, item, controller.selectedItem and controller.selectedItem.Id == itemId)
 		end
+		updateLoadoutSlots()
 		updateDetailPanel()
 	end
 
 	function controller.selectItem(item)
 		controller.selectedItem = item
+		controller.selectedSlot = getPreferredSlot(item, controller.storeState)
 		for itemId, tileRefs in controller.gridTiles do
 			updateGridTile(tileRefs, tileRefs.item, item and item.Id == itemId)
 		end
+		updateLoadoutSlots()
 		updateDetailPanel()
+	end
+
+	function controller.selectSlot(slot)
+		controller.selectedSlot = math.clamp(math.floor(slot), 1, LOADOUT_LIMIT)
+		updateLoadoutSlots()
+		updateDetailPanel()
+	end
+
+	for slot, refs in controller.slotButtons do
+		refs.button.Activated:Connect(function()
+			controller.selectSlot(slot)
+		end)
+		GuiUtil.animateButton(refs.button)
 	end
 
 	for index, item in StoreItems.Items do
@@ -611,8 +791,24 @@ function StoreUI.setup(storePanel, callbacks)
 		}), 12)
 		addCorner(notOwned, 6)
 
+		local equipped = styleLabel(create("TextLabel", {
+			Name = "Equipped",
+			BackgroundColor3 = Color3.fromRGB(64, 132, 86),
+			BackgroundTransparency = 0.05,
+			Position = UDim2.fromScale(0.08, 0.08),
+			Size = UDim2.fromScale(0.44, 0.2),
+			Text = "",
+			TextColor3 = Color3.fromRGB(240, 255, 244),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Visible = false,
+			ZIndex = tileButton.ZIndex + 4,
+			Parent = tileButton,
+		}), 11)
+		addCorner(equipped, 5)
+
 		controller.gridTiles[item.Id] = {
 			button = tileButton,
+			equipped = equipped,
 			item = item,
 			notOwned = notOwned,
 			preview = preview,
@@ -645,12 +841,12 @@ function StoreUI.setup(storePanel, callbacks)
 
 	coinButton.Activated:Connect(function()
 		local item = controller.selectedItem
-		if not item or not isPurchasable(item) or isOwned(item, controller.storeState) then
+		if not item or not canEquipItem(item) or not controller.purchaseActionEnabled then
 			return
 		end
 
 		if callbacks.onPurchase then
-			callbacks.onPurchase(item)
+			callbacks.onPurchase(item, controller.selectedSlot)
 		end
 	end)
 	GuiUtil.animateButton(coinButton)

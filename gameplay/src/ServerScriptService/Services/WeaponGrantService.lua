@@ -11,6 +11,8 @@ local DISASTER_WEAPONS = {
 	"Tornado",
 }
 
+local watchedPlayers = {}
+
 local function hasTool(container, toolName)
 	local tool = container and container:FindFirstChild(toolName)
 	return tool and tool:IsA("Tool")
@@ -109,23 +111,37 @@ local function grantStartingWeapons(player)
 	end
 end
 
+local function watchPlayer(player)
+	if watchedPlayers[player] then
+		return
+	end
+
+	watchedPlayers[player] = true
+
+	player.CharacterAdded:Connect(function()
+		task.delay(0.25, grantStartingWeapons, player)
+	end)
+
+	for index = 1, 3 do
+		player:GetAttributeChangedSignal(`DisasterLoadoutSlot{index}`):Connect(function()
+			grantStartingWeapons(player)
+		end)
+	end
+
+	task.delay(0.25, grantStartingWeapons, player)
+end
+
 function WeaponGrantService.start()
 	Players.PlayerAdded:Connect(function(player)
-		player.CharacterAdded:Connect(function()
-			task.delay(0.25, grantStartingWeapons, player)
-		end)
+		watchPlayer(player)
+	end)
 
-		task.delay(0.25, grantStartingWeapons, player)
-
-		for index = 1, 3 do
-			player:GetAttributeChangedSignal(`DisasterLoadoutSlot{index}`):Connect(function()
-				grantStartingWeapons(player)
-			end)
-		end
+	Players.PlayerRemoving:Connect(function(player)
+		watchedPlayers[player] = nil
 	end)
 
 	for _, player in Players:GetPlayers() do
-		task.delay(0.25, grantStartingWeapons, player)
+		watchPlayer(player)
 	end
 end
 

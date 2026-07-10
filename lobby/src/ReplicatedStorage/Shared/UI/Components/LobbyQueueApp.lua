@@ -12,32 +12,33 @@ local MAPS = {
 		Title = "STORMBREAK LABS",
 		Threat = "BOSS | LIGHTNING REVENANT",
 		Description = "OVERRUN RESEARCH FACILITY",
+		Status = "LIVE",
 		Accent = Color3.fromRGB(85, 216, 255),
 		Dark = Color3.fromRGB(20, 42, 74),
 		Fog = Color3.fromRGB(154, 243, 255),
-		ImagePath = "Assets.MapImages.Lab",
+		ImagePath = "Assets.MapImages.LabIcon",
 		ImageTemplate = "rbxasset://textures/ui/GuiImagePlaceholder.png",
 	},
 	{
-		Name = "Rotwood Crypt",
-		Title = "ROTWOOD CRYPT",
-		Threat = "HORDE | GRAVEBORN",
-		Description = "BURIAL GROUNDS UNDER LOCKDOWN",
-		Accent = Color3.fromRGB(115, 224, 93),
-		Dark = Color3.fromRGB(30, 69, 42),
-		Fog = Color3.fromRGB(170, 244, 137),
-		ImageTemplate = "rbxasset://textures/ui/GuiImagePlaceholder.png",
+		Name = "Volcano",
+		Title = "VOLCANO",
+		Threat = "DISASTER | LAVA SURGE",
+		Description = "MOLTEN FACILITY BREACH",
+		Status = "WIP",
+		Accent = Color3.fromRGB(255, 106, 52),
+		Dark = Color3.fromRGB(64, 28, 25),
+		Fog = Color3.fromRGB(255, 174, 92),
 		Locked = true,
 	},
 	{
-		Name = "Deadline Metro",
-		Title = "DEADLINE METRO",
-		Threat = "SWARM | TUNNEL DEAD",
-		Description = "BLACKOUT TRANSIT HUB",
-		Accent = Color3.fromRGB(255, 83, 68),
-		Dark = Color3.fromRGB(79, 30, 37),
-		Fog = Color3.fromRGB(255, 170, 126),
-		ImageTemplate = "rbxasset://textures/ui/GuiImagePlaceholder.png",
+		Name = "Tornado",
+		Title = "TORNADO",
+		Threat = "DISASTER | CYCLONE FIELD",
+		Description = "WIND-SHEAR CONTAINMENT",
+		Status = "WIP",
+		Accent = Color3.fromRGB(139, 226, 218),
+		Dark = Color3.fromRGB(29, 47, 58),
+		Fog = Color3.fromRGB(190, 245, 240),
 		Locked = true,
 	},
 }
@@ -155,7 +156,9 @@ local function mountMapPreview(imagePath)
 	end
 
 	for _, child in host:GetChildren() do
-		child:Destroy()
+		if child.Name == "MapPreviewClone" then
+			child:Destroy()
+		end
 	end
 
 	if not imagePath then
@@ -171,6 +174,8 @@ local function mountMapPreview(imagePath)
 		source = source:FindFirstChildWhichIsA("ImageLabel", true)
 			or source:FindFirstChildWhichIsA("ImageButton", true)
 			or source:FindFirstChildWhichIsA("Decal", true)
+			or source:FindFirstChildWhichIsA("Texture", true)
+			or source:FindFirstChildWhichIsA("StringValue", true)
 	end
 
 	if not source then
@@ -181,8 +186,12 @@ local function mountMapPreview(imagePath)
 		local clone = source:Clone()
 		clone.Name = "MapPreviewClone"
 		clone.AnchorPoint = Vector2.new(0, 0)
+		clone.BackgroundTransparency = 1
 		clone.Position = UDim2.fromScale(0, 0)
 		clone.Size = UDim2.fromScale(1, 1)
+		if clone:IsA("ImageLabel") or clone:IsA("ImageButton") then
+			clone.ScaleType = Enum.ScaleType.Crop
+		end
 		clone.Visible = true
 		clone.ZIndex = host.ZIndex + 1
 		clone.Parent = host
@@ -202,6 +211,8 @@ local function mountMapPreview(imagePath)
 		preview.Image = source.Texture
 	elseif source:IsA("ImageLabel") or source:IsA("ImageButton") then
 		preview.Image = source.Image
+	elseif source:IsA("StringValue") then
+		preview.Image = source.Value
 	else
 		local assigned = pcall(function()
 			preview.Image = source
@@ -218,19 +229,118 @@ local function mapPreview(map, zIndex)
 		BackgroundColor3 = map.Dark,
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
-		Name = if map.ImagePath then "MapPreviewHost" else nil,
 		Size = UDim2.fromScale(1, 1),
 		ZIndex = zIndex,
 	}, {
 		Corner = corner(8),
-		Stroke = stroke(Color3.fromRGB(0, 0, 0), 2, 0),
-		Locked = if map.Locked then label({
-			Font = Enum.Font.GothamBlack,
+		Stroke = stroke(map.Accent, 1, 0.35),
+		ImageMount = e("Frame", {
+			BackgroundColor3 = map.Dark,
+			BackgroundTransparency = 0,
+			BorderSizePixel = 0,
+			ClipsDescendants = true,
+			Name = "MapPreviewHost",
 			Size = UDim2.fromScale(1, 1),
-			Text = "COMING SOON",
-			TextSize = 24,
-			TextXAlignment = Enum.TextXAlignment.Center,
-			ZIndex = zIndex + 3,
+			ZIndex = zIndex + 1,
+		}, {
+			Placeholder = if not map.ImagePath then e("Frame", {
+				BackgroundColor3 = map.Dark,
+				BorderSizePixel = 0,
+				Size = UDim2.fromScale(1, 1),
+				ZIndex = zIndex + 1,
+			}, {
+				Glow = e("Frame", {
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					BackgroundColor3 = map.Accent,
+					BackgroundTransparency = 0.72,
+					BorderSizePixel = 0,
+					Position = UDim2.fromScale(0.5, 0.42),
+					Size = UDim2.fromOffset(132, 132),
+					ZIndex = zIndex + 2,
+				}, {
+					Corner = corner(66),
+				}),
+				Initial = label({
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					Font = Enum.Font.GothamBlack,
+					Position = UDim2.fromScale(0.5, 0.42),
+					Size = UDim2.fromOffset(154, 42),
+					Text = map.Name,
+					TextColor3 = map.Fog,
+					TextSize = 24,
+					TextStrokeTransparency = 0.18,
+					TextXAlignment = Enum.TextXAlignment.Center,
+					ZIndex = zIndex + 3,
+				}),
+			}) else nil,
+		}),
+		Tint = e("Frame", {
+			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+			BackgroundTransparency = if map.ImagePath then 0.54 else 0.68,
+			BorderSizePixel = 0,
+			Position = UDim2.fromScale(0, 0.58),
+			Size = UDim2.fromScale(1, 0.42),
+			ZIndex = zIndex + 4,
+		}),
+		Badge = e("Frame", {
+			AnchorPoint = Vector2.new(1, 0),
+			BackgroundColor3 = if map.Locked then Color3.fromRGB(56, 61, 72) else map.Accent,
+			BackgroundTransparency = if map.Locked then 0.08 else 0,
+			BorderSizePixel = 0,
+			Position = UDim2.new(1, -10, 0, 10),
+			Size = UDim2.fromOffset(if map.Locked then 46 else 42, 22),
+			ZIndex = zIndex + 6,
+		}, {
+			Corner = corner(6),
+			Text = label({
+				Font = Enum.Font.GothamBlack,
+				Size = UDim2.fromScale(1, 1),
+				Text = map.Status or (if map.Locked then "WIP" else "LIVE"),
+				TextColor3 = if map.Locked then Color3.fromRGB(218, 224, 232) else Color3.fromRGB(12, 20, 28),
+				TextSize = 12,
+				TextStrokeTransparency = 1,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = zIndex + 7,
+			}),
+		}),
+		Title = label({
+			Font = Enum.Font.GothamBlack,
+			Position = UDim2.new(0, 14, 1, -76),
+			Size = UDim2.new(1, -28, 0, 26),
+			Text = map.Title,
+			TextColor3 = WHITE,
+			TextSize = 21,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = zIndex + 6,
+		}),
+		Threat = label({
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.new(0, 14, 1, -48),
+			Size = UDim2.new(1, -28, 0, 18),
+			Text = map.Threat,
+			TextColor3 = map.Accent,
+			TextSize = 13,
+			TextStrokeTransparency = 0.35,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = zIndex + 6,
+		}),
+		Description = label({
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.new(0, 14, 1, -28),
+			Size = UDim2.new(1, -28, 0, 18),
+			Text = map.Description,
+			TextColor3 = Color3.fromRGB(211, 222, 232),
+			TextSize = 12,
+			TextStrokeTransparency = 0.45,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = zIndex + 6,
+		}),
+		Locked = if map.Locked then e("Frame", {
+			BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+			BackgroundTransparency = 0.82,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = zIndex + 5,
 		}) else nil,
 	})
 end
@@ -264,13 +374,71 @@ local function dropdownButton(textValue, enabled, onActivated, zIndex)
 			Font = Enum.Font.GothamBold,
 			Position = UDim2.new(1, -10, 0.5, 0),
 			Size = UDim2.fromOffset(18, 18),
-			Text = "▼",
+			Text = "v",
 			TextColor3 = Color3.fromRGB(20, 24, 32),
 			TextSize = 14,
 			TextStrokeTransparency = 1,
 			TextXAlignment = Enum.TextXAlignment.Center,
 			ZIndex = zIndex + 1,
 		}),
+	})
+end
+
+local function mapDropdownItem(map, selected, enabled, onActivated, layoutOrder, zIndex)
+	local textColor = if enabled then WHITE else Color3.fromRGB(168, 176, 188)
+
+	return e("TextButton", {
+		AutoButtonColor = enabled,
+		BackgroundColor3 = if selected then Color3.fromRGB(44, 50, 62) else Color3.fromRGB(27, 30, 38),
+		BackgroundTransparency = if enabled then 0 else 0.12,
+		BorderSizePixel = 0,
+		LayoutOrder = layoutOrder,
+		Size = UDim2.new(1, 0, 0, 38),
+		Text = "",
+		ZIndex = zIndex,
+		[React.Event.Activated] = if enabled then onActivated else nil,
+	}, {
+		Corner = corner(5),
+		Accent = e("Frame", {
+			BackgroundColor3 = if enabled then map.Accent else Color3.fromRGB(75, 82, 94),
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(8, 8),
+			Size = UDim2.new(0, 3, 1, -16),
+			ZIndex = zIndex + 1,
+		}, {
+			Corner = corner(3),
+		}),
+		Name = label({
+			Font = Enum.Font.GothamBold,
+			Position = UDim2.fromOffset(18, 0),
+			Size = UDim2.new(1, -72, 1, 0),
+			Text = map.Name,
+			TextColor3 = textColor,
+			TextSize = 15,
+			TextStrokeTransparency = if enabled then 0.45 else 0.8,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = zIndex + 2,
+		}),
+		Status = if map.Locked then e("Frame", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			BackgroundColor3 = Color3.fromRGB(58, 63, 74),
+			BorderSizePixel = 0,
+			Position = UDim2.new(1, -8, 0.5, 0),
+			Size = UDim2.fromOffset(42, 22),
+			ZIndex = zIndex + 2,
+		}, {
+			Corner = corner(5),
+			Text = label({
+				Font = Enum.Font.GothamBlack,
+				Size = UDim2.fromScale(1, 1),
+				Text = "WIP",
+				TextColor3 = Color3.fromRGB(219, 225, 233),
+				TextSize = 12,
+				TextStrokeTransparency = 1,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				ZIndex = zIndex + 3,
+			}),
+		}) else nil,
 	})
 end
 
@@ -305,32 +473,12 @@ local function getDifficultyInfo(name)
 	return DIFFICULTIES[1]
 end
 
-local function getNextUnlockedMapIndex(currentIndex, direction)
-	local count = #MAPS
-	local index = currentIndex
-
-	for _ = 1, count do
-		index += direction
-
-		if index > count then
-			index = 1
-		elseif index < 1 then
-			index = count
-		end
-
-		if not MAPS[index].Locked then
-			return index
-		end
-	end
-
-	return currentIndex
-end
-
 local function LobbyQueueApp(props)
 	local network = props.Network
 	local bestWave, setBestWave = React.useState(0)
 	local prompt, setPrompt = React.useState(nil)
 	local selectedMapIndex, setSelectedMapIndex = React.useState(1)
+	local mapDropdownOpen, setMapDropdownOpen = React.useState(false)
 	local selectedDifficulty, setSelectedDifficulty = React.useState(DIFFICULTIES[1].Name)
 	local selectedPlayers, setSelectedPlayers = React.useState(1)
 	local status, setStatus = React.useState("")
@@ -359,11 +507,13 @@ local function LobbyQueueApp(props)
 			setPrompt(data)
 			setStatus(if data.isCreator then "" else "Waiting for party leader...")
 			setSelectedPlayers(math.clamp(selectedPlayers, 1, data.maxPlayers))
+			setMapDropdownOpen(false)
 		end)
 
 		network.queueForceLeave.listen(function(data)
 			setPrompt(nil)
 			setStatus(data.message or "")
+			setMapDropdownOpen(false)
 		end)
 
 		network.storeState.listen(function(data)
@@ -383,12 +533,10 @@ local function LobbyQueueApp(props)
 		end
 
 		local selectedMap = MAPS[selectedMapIndex]
-		if not selectedMap or not selectedMap.ImagePath then
-			return
-		end
+		local imagePath = if selectedMap then selectedMap.ImagePath else nil
 
 		task.defer(function()
-			mountMapPreview(selectedMap.ImagePath)
+			mountMapPreview(imagePath)
 		end)
 
 		return function()
@@ -401,6 +549,7 @@ local function LobbyQueueApp(props)
 	local maxPlayers = if visible then prompt.maxPlayers else 4
 	local selectedMap = MAPS[selectedMapIndex]
 	local difficultyInfo = getDifficultyInfo(selectedDifficulty)
+	local canCreateQueue = isCreator and selectedMap and not selectedMap.Locked
 
 	local partyButtons = {
 		Row = e("UIListLayout", {
@@ -417,7 +566,32 @@ local function LobbyQueueApp(props)
 		end, count, 8)
 	end
 
-	local createScale = 1 + (if createHovered then 0.03 else 0) + bounceSince(clock, createClickTime, 0.32, 0.12)
+	local mapOptions = {
+		Padding = e("UIPadding", {
+			PaddingBottom = UDim.new(0, 6),
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 6),
+			PaddingTop = UDim.new(0, 6),
+		}),
+		List = e("UIListLayout", {
+			Padding = UDim.new(0, 5),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	}
+
+	for index, map in MAPS do
+		local optionIndex = index
+		local optionEnabled = isCreator and not map.Locked
+		mapOptions[`Map{index}`] = mapDropdownItem(map, selectedMapIndex == optionIndex, optionEnabled, function()
+			setSelectedMapIndex(optionIndex)
+			setMapDropdownOpen(false)
+		end, index, 32)
+	end
+
+	local createScale = 1
+	if canCreateQueue then
+		createScale += (if createHovered then 0.03 else 0) + bounceSince(clock, createClickTime, 0.32, 0.12)
+	end
 	local closeScale = 1 + (if closeHovered then 0.05 else 0) + bounceSince(clock, closeClickTime, 0.26, 0.1)
 
 	return e("ScreenGui", {
@@ -464,6 +638,7 @@ local function LobbyQueueApp(props)
 					setCloseClickTime(os.clock())
 					network.queueLeave.send()
 					setPrompt(nil)
+					setMapDropdownOpen(false)
 				end,
 				[React.Event.MouseEnter] = function()
 					setCloseHovered(true)
@@ -496,11 +671,27 @@ local function LobbyQueueApp(props)
 					BackgroundTransparency = 1,
 					Position = UDim2.fromOffset(0, 34),
 					Size = UDim2.new(1, 0, 0, 38),
-					ZIndex = 4,
+					ZIndex = 28,
 				}, {
 					Dropdown = dropdownButton(selectedMap.Name, isCreator, function()
-						setSelectedMapIndex(getNextUnlockedMapIndex(selectedMapIndex, 1))
-					end, 5),
+						setMapDropdownOpen(not mapDropdownOpen)
+					end, 29),
+					Options = if mapDropdownOpen then e("Frame", {
+						BackgroundColor3 = Color3.fromRGB(18, 20, 26),
+						BackgroundTransparency = 0.02,
+						BorderSizePixel = 0,
+						Position = UDim2.fromOffset(0, 44),
+						Size = UDim2.new(1, 0, 0, 142),
+						ZIndex = 30,
+					}, {
+						Corner = corner(7),
+						Stroke = stroke(Color3.fromRGB(0, 0, 0), 2, 0.05),
+						Items = e("Frame", {
+							BackgroundTransparency = 1,
+							Size = UDim2.fromScale(1, 1),
+							ZIndex = 31,
+						}, mapOptions),
+					}) else nil,
 				}),
 				Preview = e("Frame", {
 					BackgroundTransparency = 1,
@@ -543,18 +734,18 @@ local function LobbyQueueApp(props)
 				}) else nil,
 				Create = if isCreator then e("TextButton", {
 					AnchorPoint = Vector2.new(0.5, 1),
-					AutoButtonColor = false,
-					BackgroundColor3 = GREEN,
+					AutoButtonColor = canCreateQueue,
+					BackgroundColor3 = if canCreateQueue then GREEN else Color3.fromRGB(77, 84, 96),
 					BorderSizePixel = 0,
 					Font = Enum.Font.GothamBlack,
 					Position = UDim2.new(0.5, 0, 1, 0),
 					Size = UDim2.new(1, -12, 0, 58),
-					Text = "CREATE",
-					TextColor3 = WHITE,
+					Text = if canCreateQueue then "CREATE" else "MAP WIP",
+					TextColor3 = if canCreateQueue then WHITE else Color3.fromRGB(215, 221, 230),
 					TextSize = 28,
-					TextStrokeTransparency = 0.08,
+					TextStrokeTransparency = if canCreateQueue then 0.08 else 0.35,
 					ZIndex = 6,
-					[React.Event.Activated] = function()
+					[React.Event.Activated] = if canCreateQueue then function()
 						setCreateClickTime(os.clock())
 						network.queueCreate.send({
 							map = selectedMap.Title,
@@ -567,13 +758,14 @@ local function LobbyQueueApp(props)
 							isCreator = false,
 							maxPlayers = maxPlayers,
 						})
-					end,
-					[React.Event.MouseEnter] = function()
+						setMapDropdownOpen(false)
+					end else nil,
+					[React.Event.MouseEnter] = if canCreateQueue then function()
 						setCreateHovered(true)
-					end,
-					[React.Event.MouseLeave] = function()
+					end else nil,
+					[React.Event.MouseLeave] = if canCreateQueue then function()
 						setCreateHovered(false)
-					end,
+					end else nil,
 				}, {
 					Corner = corner(8),
 					Stroke = stroke(Color3.fromRGB(0, 0, 0), 2, 0),

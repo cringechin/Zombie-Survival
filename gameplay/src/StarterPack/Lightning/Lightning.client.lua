@@ -18,6 +18,7 @@ local firing = false
 local equipped = false
 local primaryFireHeld = false
 local lastLocalFeedbackAt = 0
+local lastLocalCastAt = 0
 local stopFiring
 
 local function isLocalPlayerAlive()
@@ -81,8 +82,14 @@ local function castLightning()
 		return
 	end
 
+	local now = os.clock()
+	if now - lastLocalCastAt < LIGHTNING_COOLDOWN then
+		return
+	end
+
+	lastLocalCastAt = now
 	tool:SetAttribute("CooldownDuration", LIGHTNING_COOLDOWN)
-	tool:SetAttribute("CooldownEndsAt", os.clock() + LIGHTNING_COOLDOWN)
+	tool:SetAttribute("CooldownEndsAt", now + LIGHTNING_COOLDOWN)
 
 	Network.disasterWeaponCast.send({
 		weapon = "Lightning",
@@ -90,7 +97,6 @@ local function castLightning()
 		targetPosition = targetPosition or Vector3.zero,
 	})
 
-	local now = os.clock()
 	if now - lastLocalFeedbackAt > 0.08 then
 		lastLocalFeedbackAt = now
 		ClientFeedback.cameraKick(0.75, 0.13)
