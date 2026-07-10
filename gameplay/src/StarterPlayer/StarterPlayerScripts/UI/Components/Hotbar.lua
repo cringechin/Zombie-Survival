@@ -26,6 +26,9 @@ local KEYCODES = {
 
 local corner = Style.corner
 local stroke = Style.stroke
+local GLASS = Color3.fromRGB(8, 12, 18)
+local SOFT_STROKE = Color3.fromRGB(210, 232, 245)
+local MUTED_TEXT = Color3.fromRGB(176, 196, 206)
 
 local function getCooldownDuration(tool)
 	local attributeDuration = tool:GetAttribute("CooldownDuration")
@@ -101,7 +104,23 @@ local function getSelectedTool()
 	return character:FindFirstChildOfClass("Tool")
 end
 
+local function isLocalPlayerAlive()
+	if localPlayer:GetAttribute("IsDowned") == true then
+		return false
+	end
+
+	local character = localPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	return humanoid ~= nil and root ~= nil and humanoid.Health > 0
+end
+
 local function equipTool(tool)
+	if not isLocalPlayerAlive() then
+		return
+	end
+
 	local character = localPlayer.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid and tool then
@@ -142,11 +161,11 @@ local function Slot(props)
 
 	return e("TextButton", {
 		AutoButtonColor = false,
-		BackgroundColor3 = if selected then Style.RED else Style.PANEL,
-		BackgroundTransparency = if selected then 0 else 0.04,
+		BackgroundColor3 = if selected then accentColor else GLASS,
+		BackgroundTransparency = if selected then 0.28 else 0.52,
 		BorderSizePixel = 0,
 		LayoutOrder = props.Index,
-		Size = UDim2.fromOffset(72, 72),
+		Size = UDim2.fromOffset(60, 60),
 		Text = "",
 		ZIndex = 40,
 		[React.Event.Activated] = props.OnActivated,
@@ -155,25 +174,23 @@ local function Slot(props)
 		end,
 	}, {
 		Corner = corner(8),
-		Stroke = stroke(nil, if selected then 3 else 2, 0),
+		Stroke = stroke(if selected then accentColor else SOFT_STROKE, 1, if selected then 0.08 else 0.76),
 
 		Key = e("Frame", {
-			BackgroundColor3 = Style.INK,
-			BackgroundTransparency = 0,
+			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
-			Position = UDim2.fromOffset(5, 5),
-			Size = UDim2.fromOffset(20, 20),
+			Position = UDim2.fromOffset(6, 4),
+			Size = UDim2.fromOffset(16, 16),
 			ZIndex = 43,
 		}, {
-			Corner = corner(5),
 			Text = Style.text({
-				Font = Enum.Font.GothamBlack,
+				Font = Enum.Font.GothamBold,
 				Size = UDim2.fromScale(1, 1),
 				Text = tostring(props.Index),
-				TextColor3 = Style.WHITE,
+				TextColor3 = if selected then Style.WHITE else MUTED_TEXT,
 				TextScaled = true,
-				TextStrokeTransparency = 0.08,
-				MaxTextSize = 14,
+				TextStrokeTransparency = 1,
+				MaxTextSize = 12,
 				MinTextSize = 8,
 				ZIndex = 44,
 			}),
@@ -182,22 +199,21 @@ local function Slot(props)
 		Icon = e("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0),
 			BackgroundColor3 = accentColor,
-			BackgroundTransparency = 0.08,
+			BackgroundTransparency = if selected then 0.05 else 0.16,
 			BorderSizePixel = 0,
-			Position = UDim2.new(0.5, 0, 0, 17),
-			Size = UDim2.fromOffset(34, 28),
+			Position = UDim2.new(0.5, 0, 0, 18),
+			Size = UDim2.fromOffset(28, 24),
 			ZIndex = 42,
 		}, {
-			Corner = corner(7),
-			Stroke = stroke(nil, 2, 0),
+			Corner = corner(6),
 			Glyph = Style.text({
 				Font = Enum.Font.GothamBlack,
 				Size = UDim2.fromScale(1, 1),
 				Text = glyph,
-				TextColor3 = Style.WHITE,
+				TextColor3 = GLASS,
 				TextScaled = true,
-				TextStrokeTransparency = 0.08,
-				MaxTextSize = 21,
+				TextStrokeTransparency = 1,
+				MaxTextSize = 18,
 				MinTextSize = 10,
 				ZIndex = 43,
 			}),
@@ -206,20 +222,20 @@ local function Slot(props)
 		Name = Style.text({
 			AnchorPoint = Vector2.new(0.5, 1),
 			Font = Enum.Font.GothamBold,
-			Position = UDim2.new(0.5, 0, 1, -5),
-			Size = UDim2.new(1, -8, 0, 18),
+			Position = UDim2.new(0.5, 0, 1, -4),
+			Size = UDim2.new(1, -8, 0, 14),
 			Text = tool.Name,
-			TextColor3 = Style.WHITE,
+			TextColor3 = if selected then Style.WHITE else MUTED_TEXT,
 			TextScaled = true,
-			TextStrokeTransparency = 0.08,
-			MaxTextSize = 13,
+			TextStrokeTransparency = 1,
+			MaxTextSize = 11,
 			MinTextSize = 8,
 			ZIndex = 44,
 		}),
 
 		Cooldown = isCoolingDown and e("Frame", {
-			BackgroundColor3 = Style.INK,
-			BackgroundTransparency = 0.28,
+			BackgroundColor3 = GLASS,
+			BackgroundTransparency = 0.18,
 			BorderSizePixel = 0,
 			ClipsDescendants = true,
 			Position = UDim2.fromScale(0, 1 - cooldownRatio),
@@ -233,8 +249,8 @@ local function Slot(props)
 				Text = string.format("%.1f", remaining),
 				TextColor3 = Style.WHITE,
 				TextScaled = true,
-				TextStrokeTransparency = 0.08,
-				MaxTextSize = 24,
+				TextStrokeTransparency = 1,
+				MaxTextSize = 20,
 				MinTextSize = 10,
 				ZIndex = 46,
 			}),
@@ -300,6 +316,12 @@ local function Hotbar()
 
 				for index, keyCode in KEYCODES do
 					if input.KeyCode == keyCode then
+						if not isLocalPlayerAlive() then
+							unequipTools()
+							refreshTools()
+							break
+						end
+
 						local tool = toolsRef.current[index]
 						if tool then
 							if selectedToolRef.current == tool then
@@ -321,6 +343,15 @@ local function Hotbar()
 			end
 		end)
 		table.insert(connections, renderConnection)
+		table.insert(
+			connections,
+			localPlayer:GetAttributeChangedSignal("IsDowned"):Connect(function()
+				if localPlayer:GetAttribute("IsDowned") == true then
+					unequipTools()
+					refreshTools()
+				end
+			end)
+		)
 
 		return function()
 			cancelled = true
@@ -339,13 +370,11 @@ local function Hotbar()
 			VerticalAlignment = Enum.VerticalAlignment.Center,
 		}),
 		Padding = e("UIPadding", {
-			PaddingBottom = UDim.new(0, 7),
-			PaddingLeft = UDim.new(0, 9),
-			PaddingRight = UDim.new(0, 9),
-			PaddingTop = UDim.new(0, 7),
+			PaddingBottom = UDim.new(0, 0),
+			PaddingLeft = UDim.new(0, 0),
+			PaddingRight = UDim.new(0, 0),
+			PaddingTop = UDim.new(0, 0),
 		}),
-		Corner = corner(12),
-		Stroke = stroke(nil, 3, 0),
 	}
 
 	for index, tool in tools do
@@ -358,6 +387,12 @@ local function Hotbar()
 			Now = now,
 			OnActivated = function()
 				Sounds.play("click")
+				if not isLocalPlayerAlive() then
+					unequipTools()
+					refreshTools()
+					return
+				end
+
 				if selectedTool == tool then
 					unequipTools()
 				else
@@ -372,11 +407,10 @@ local function Hotbar()
 
 	return e("Frame", {
 		AnchorPoint = Vector2.new(0.5, 1),
-		BackgroundColor3 = Style.PANEL,
-		BackgroundTransparency = 0.04,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0.5, 0, 1, -8),
-		Size = UDim2.fromOffset(math.max(92, (#tools * 80) + 18), 86),
+		Position = UDim2.new(0.5, 0, 1, -14),
+		Size = UDim2.fromOffset(math.max(60, (#tools * 68) - 8), 60),
 		ZIndex = 39,
 	}, children)
 end

@@ -299,6 +299,69 @@ local function isR6Humanoid(humanoid)
 	return humanoid and humanoid.RigType == Enum.HumanoidRigType.R6
 end
 
+local function findRigPart(model, name)
+	return model:FindFirstChild(name) or model:FindFirstChild(name, true)
+end
+
+local function isR6Model(model)
+	return findRigPart(model, "Torso")
+		and findRigPart(model, "Left Arm")
+		and findRigPart(model, "Right Arm")
+		and findRigPart(model, "Left Leg")
+		and findRigPart(model, "Right Leg")
+end
+
+local function hasR6MotorRig(model)
+	local requiredMotors = {
+		RootJoint = false,
+		Neck = false,
+		["Left Shoulder"] = false,
+		["Right Shoulder"] = false,
+		["Left Hip"] = false,
+		["Right Hip"] = false,
+	}
+
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("Motor6D") and requiredMotors[descendant.Name] ~= nil then
+			requiredMotors[descendant.Name] = descendant.Part0 ~= nil and descendant.Part1 ~= nil
+		end
+	end
+
+	for _, found in requiredMotors do
+		if not found then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function isUsableAnimatedTemplate(template)
+	if not template or not template:IsA("Model") or #template:GetChildren() == 0 then
+		return false
+	end
+
+	if isR6Model(template) then
+		return hasR6MotorRig(template)
+	end
+
+	return true
+end
+
+local function configureHumanoidRig(humanoid, model)
+	if not isR6Model(model) then
+		return
+	end
+
+	pcall(function()
+		humanoid.RigType = Enum.HumanoidRigType.R6
+	end)
+
+	pcall(function()
+		humanoid.AutomaticScalingEnabled = false
+	end)
+end
+
 local function getPivotForRootCFrame(model, root, rootCFrame)
 	local rootToPivot = root.CFrame:ToObjectSpace(model:GetPivot())
 	return rootCFrame * rootToPivot
@@ -310,6 +373,66 @@ local function getMovementRaycastParams(model)
 	raycastParams.FilterDescendantsInstances = { model, Workspace:WaitForChild("Zombies") }
 
 	return raycastParams
+end
+
+local function getAttackHitboxMetrics(config, validationPadding)
+	local padding = validationPadding or 0
+	local rangePadding = config.ClientHitboxRangePadding or GameConfig.ZombieClientHitboxRangePadding or 0
+	local width = config.ClientHitboxWidth or GameConfig.ZombieClientHitboxWidth or 4
+	local height = config.ClientHitboxHeight or GameConfig.ZombieClientHitboxHeight or 6
+	local backPadding = config.ClientHitboxBackPadding or GameConfig.ZombieClientHitboxBackPadding or 0.5
+
+	return {
+		depth = (config.AttackRange or 2.5) + rangePadding + padding,
+		halfWidth = (width / 2) + padding,
+		halfHeight = (height / 2) + padding,
+		backPadding = backPadding + padding,
+		width = width,
+		height = height,
+	}
+end
+
+local function isPointInAttackHitbox(rootCFrame, position, config, validationPadding)
+	if typeof(position) ~= "Vector3" then
+		return false
+	end
+
+	local localPosition = rootCFrame:PointToObjectSpace(position)
+	local forwardDistance = -localPosition.Z
+	local metrics = getAttackHitboxMetrics(config, validationPadding)
+
+	return forwardDistance >= -metrics.backPadding
+		and forwardDistance <= metrics.depth
+		and math.abs(localPosition.X) <= metrics.halfWidth
+		and math.abs(localPosition.Y) <= metrics.halfHeight
+end
+
+local function hasBlockingPartBetween(model, character, fromPosition, toPosition)
+	local direction = toPosition - fromPosition
+	if direction.Magnitude <= 0.05 then
+		return false
+	end
+
+	local exclusions = { model, character }
+	local zombiesFolder = Workspace:FindFirstChild("Zombies")
+	if zombiesFolder then
+		table.insert(exclusions, zombiesFolder)
+	end
+
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	raycastParams.FilterDescendantsInstances = exclusions
+
+	local result = Workspace:Raycast(fromPosition, direction, raycastParams)
+	if not result or not result.Instance then
+		return false
+	end
+
+	if result.Instance == Workspace.Terrain then
+		return true
+	end
+
+	return result.Instance:IsA("BasePart") and result.Instance.CanCollide and result.Instance.Transparency < 0.95
 end
 
 function NPC.new(config)
@@ -326,6 +449,10 @@ function NPC.new(config)
 	self._canMove = false
 	self._isAttacking = false
 	self._lastAttackTime = 0
+	self._attackToken = 0
+	self._attackWindowStart = 0
+	self._attackWindowEnd = 0
+	self._attackHitUserIds = {}
 	self._facingAlign = nil
 	self._navigator = nil
 	self._surroundAngle = math.random() * math.pi * 2
@@ -347,6 +474,13 @@ function NPC:_loadAnimationTrack(animationId, priority, looped)
 	local ok, track = pcall(function()
 		return self.Animator:LoadAnimation(animation)
 	end)
+
+	if (not ok or not track) and self.Humanoid then
+		ok, track = pcall(function()
+			return self.Humanoid:LoadAnimation(animation)
+		end)
+	end
+
 	animation:Destroy()
 
 	if not ok or not track then
@@ -360,8 +494,13 @@ end
 
 function NPC:_getAssetTemplate()
 	local template = getInstanceFromPath(self.Config.AssetPath)
-	if template and template:IsA("Model") and #template:GetChildren() > 0 then
+	if isUsableAnimatedTemplate(template) then
 		return template
+	end
+
+	local fallbackTemplate = self.Config.RigFallbackAssetPath and getInstanceFromPath(self.Config.RigFallbackAssetPath)
+	if isUsableAnimatedTemplate(fallbackTemplate) then
+		return fallbackTemplate
 	end
 
 	return nil
@@ -388,6 +527,7 @@ function NPC:_createModel(spawnCFrame)
 		humanoid = Instance.new("Humanoid")
 		humanoid.Parent = model
 	end
+	configureHumanoidRig(humanoid, model)
 
 	local animator = humanoid:FindFirstChildOfClass("Animator")
 	if not animator then
@@ -1001,6 +1141,21 @@ function NPC:_getNearestTarget()
 	return nearestTarget, nearestDistance
 end
 
+function NPC:_setAttackHitboxAttributes(attackToken, windowStart, windowEnd)
+	if not self.Model then
+		return
+	end
+
+	local metrics = getAttackHitboxMetrics(self.Config, 0)
+	self.Model:SetAttribute("ZombieAttackToken", attackToken or 0)
+	self.Model:SetAttribute("ZombieAttackWindowStart", windowStart or 0)
+	self.Model:SetAttribute("ZombieAttackWindowEnd", windowEnd or 0)
+	self.Model:SetAttribute("ZombieAttackDepth", metrics.depth)
+	self.Model:SetAttribute("ZombieAttackWidth", metrics.width)
+	self.Model:SetAttribute("ZombieAttackHeight", metrics.height)
+	self.Model:SetAttribute("ZombieAttackBackPadding", metrics.backPadding)
+end
+
 function NPC:_tryAttack(target, distance)
 	if not self._canMove then
 		return
@@ -1010,7 +1165,9 @@ function NPC:_tryAttack(target, distance)
 		return
 	end
 
-	if distance > self.Config.AttackRange then
+	local attackStartRange = self.Config.AttackStartRange
+		or ((self.Config.AttackRange or 2.5) + (self.Config.ClientHitboxRangePadding or GameConfig.ZombieClientHitboxRangePadding or 0))
+	if distance > attackStartRange then
 		return
 	end
 
@@ -1024,21 +1181,113 @@ function NPC:_tryAttack(target, distance)
 		return
 	end
 
+	local windup = self.Config.AttackWindup or 0
+	local hitboxDuration = self.Config.ClientHitboxDuration or GameConfig.ZombieClientHitboxDuration or 0.35
+	local serverNow = Workspace:GetServerTimeNow()
+	local attackToken = (self._attackToken % 4294967295) + 1
+
+	self._attackToken = attackToken
+	self._attackWindowStart = serverNow + windup
+	self._attackWindowEnd = self._attackWindowStart + hitboxDuration
+	self._attackHitUserIds = {}
 	self._lastAttackTime = os.clock()
 	self._isAttacking = true
+	self:_setAttackHitboxAttributes(attackToken, self._attackWindowStart, self._attackWindowEnd)
 
-	task.delay(self.Config.AttackWindup, function()
-		self._isAttacking = false
-
+	task.delay(windup, function()
 		if not self._alive or not self.Root or not targetRoot or not targetHumanoid or targetHumanoid.Health <= 0 then
 			return
 		end
 
-		local confirmedDistance = (targetRoot.Position - self.Root.Position).Magnitude
-		if confirmedDistance <= self.Config.AttackRange then
-			targetHumanoid:TakeDamage(self.Config.Damage)
+		if target.Kind ~= "Player" then
+			self:ApplyServerHit(targetHumanoid, targetRoot)
 		end
 	end)
+
+	task.delay(windup + hitboxDuration, function()
+		if self._attackToken ~= attackToken then
+			return
+		end
+
+		self._isAttacking = false
+	end)
+end
+
+function NPC:TryApplyClientHit(player, attackToken, reportedPosition)
+	if
+		not self._alive
+		or not self.Root
+		or not self.Model
+		or not self.Model.Parent
+		or not self.Humanoid
+		or self.Humanoid.Health <= 0
+	then
+		return false
+	end
+
+	if type(attackToken) ~= "number" or attackToken ~= self._attackToken or attackToken <= 0 then
+		return false
+	end
+
+	if self._attackHitUserIds[player.UserId] then
+		return false
+	end
+
+	local now = Workspace:GetServerTimeNow()
+	if now < (self._attackWindowStart - 0.15) or now > (self._attackWindowEnd + 0.28) then
+		return false
+	end
+
+	local character = player.Character
+	local targetHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
+	if not targetHumanoid or not targetRoot or targetHumanoid.Health <= 0 then
+		return false
+	end
+
+	if typeof(reportedPosition) ~= "Vector3" then
+		reportedPosition = targetRoot.Position
+	end
+
+	local positionSlack = GameConfig.ZombieHitReportPositionSlack or 8
+	if (reportedPosition - targetRoot.Position).Magnitude > positionSlack then
+		return false
+	end
+
+	local validationPadding = GameConfig.ZombieServerHitValidationPadding or 1.5
+	local rootCFrame = self.Root.CFrame
+	if
+		not isPointInAttackHitbox(rootCFrame, targetRoot.Position, self.Config, validationPadding)
+		and not isPointInAttackHitbox(rootCFrame, reportedPosition, self.Config, validationPadding)
+	then
+		return false
+	end
+
+	local fromPosition = self.Root.Position + Vector3.new(0, 2, 0)
+	local toPosition = targetRoot.Position + Vector3.new(0, 2, 0)
+	if hasBlockingPartBetween(self.Model, character, fromPosition, toPosition) then
+		return false
+	end
+
+	self._attackHitUserIds[player.UserId] = true
+	targetHumanoid:TakeDamage(self.Config.Damage)
+
+	return true
+end
+
+function NPC:ApplyServerHit(targetHumanoid, targetRoot)
+	if not self.Root or not targetHumanoid or not targetRoot or targetHumanoid.Health <= 0 then
+		return false
+	end
+
+	local confirmedDistance = (targetRoot.Position - self.Root.Position).Magnitude
+	local rangePadding = self.Config.ClientHitboxRangePadding or GameConfig.ZombieClientHitboxRangePadding or 0
+	if confirmedDistance <= (self.Config.AttackRange + rangePadding) then
+		targetHumanoid:TakeDamage(self.Config.Damage)
+		return true
+	end
+
+	return false
 end
 
 function NPC:_getSurroundPosition(targetRoot)
@@ -1315,6 +1564,7 @@ function NPC:Spawn(spawnCFrame, parent)
 	self.Model:SetAttribute("WalkSpeed", self.Config.WalkSpeed)
 	self.Model:SetAttribute("Health", self.Humanoid.Health)
 	self.Model:SetAttribute("MaxHealth", self.Humanoid.MaxHealth)
+	self:_setAttackHitboxAttributes(0, 0, 0)
 	self.Model.Parent = parent or Workspace
 	setServerNetworkOwner(self.Root)
 

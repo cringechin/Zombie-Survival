@@ -21,6 +21,18 @@ local defensesFolder = nil
 local turretsByPlayer = {}
 local turretRecordsByModel = {}
 
+local function isPlayerAlive(player)
+	if player:GetAttribute("IsDowned") == true then
+		return false
+	end
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	return humanoid ~= nil and root ~= nil and humanoid.Health > 0
+end
+
 local function ensureDefensesFolder()
 	if defensesFolder and defensesFolder.Parent then
 		return defensesFolder
@@ -138,6 +150,10 @@ local function clampPlacementDistance(origin, target, maxDistance)
 end
 
 local function findPlacementCFrame(player, requestedPosition, config)
+	if not isPlayerAlive(player) then
+		return nil
+	end
+
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -596,6 +612,10 @@ local function createLightningTurretModel(player, spawnCFrame, config)
 end
 
 local function purchaseLightningTurret(player, requestedPosition)
+	if not isPlayerAlive(player) then
+		return
+	end
+
 	local config = getTurretConfig()
 	if not config then
 		return

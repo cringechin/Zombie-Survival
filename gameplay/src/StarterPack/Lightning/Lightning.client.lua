@@ -18,6 +18,19 @@ local firing = false
 local equipped = false
 local primaryFireHeld = false
 local lastLocalFeedbackAt = 0
+local stopFiring
+
+local function isLocalPlayerAlive()
+	if localPlayer:GetAttribute("IsDowned") == true then
+		return false
+	end
+
+	local character = localPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	return humanoid ~= nil and root ~= nil and humanoid.Health > 0
+end
 
 local function getFlatAimDirection()
 	local camera = Workspace.CurrentCamera
@@ -57,6 +70,12 @@ local function getFlatAimDirection()
 end
 
 local function castLightning()
+	if not isLocalPlayerAlive() then
+		primaryFireHeld = false
+		stopFiring()
+		return
+	end
+
 	local direction, targetPosition = getFlatAimDirection()
 	if not direction then
 		return
@@ -85,18 +104,24 @@ local function startFiring()
 		return
 	end
 
+	if not isLocalPlayerAlive() then
+		primaryFireHeld = false
+		return
+	end
+
 	firing = true
 	task.spawn(function()
-		while firing and equipped and primaryFireHeld do
+		while firing and equipped and primaryFireHeld and isLocalPlayerAlive() do
 			castLightning()
 			task.wait(FIRE_INTERVAL)
 		end
 
+		primaryFireHeld = false
 		firing = false
 	end)
 end
 
-local function stopFiring()
+function stopFiring()
 	firing = false
 end
 
@@ -111,6 +136,12 @@ tool.Unequipped:Connect(function()
 end)
 
 tool.Activated:Connect(function()
+	if not isLocalPlayerAlive() then
+		primaryFireHeld = false
+		stopFiring()
+		return
+	end
+
 	primaryFireHeld = true
 	startFiring()
 end)
@@ -130,8 +161,21 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 RunService.Heartbeat:Connect(function()
+	if not isLocalPlayerAlive() then
+		primaryFireHeld = false
+		stopFiring()
+		return
+	end
+
 	if equipped and not firing and UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
 		primaryFireHeld = true
 		startFiring()
+	end
+end)
+
+localPlayer:GetAttributeChangedSignal("IsDowned"):Connect(function()
+	if localPlayer:GetAttribute("IsDowned") == true then
+		primaryFireHeld = false
+		stopFiring()
 	end
 end)

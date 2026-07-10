@@ -18,8 +18,28 @@ DisasterWeaponService.Order = 30
 local lastCastTimesByUserId = {}
 local METEOR_ASSET_PATH = { "Assets", "VFX", "Disasters", "Meteor", "Meteor" }
 local METEOR_VFX_ROOT_PATH = { "Assets", "VFX", "Disasters", "Meteor" }
-local TORNADO_ASSET_PATH = { "Assets", "VFX", "Disasters", "Tornado", "Tornado-01" }
+local TORNADO_VFX_ROOT_PATHS = {
+	{ "Assets", "VFX", "Disasters", "Tornado" },
+	{ "Assets", "Disasters", "Tornado" },
+}
+local TORNADO_ASSET_NAMES = { "TornadoVFX", "Tornado", "Tornado-01", "Tornado01" }
 local LIGHTNING_BOLT_SOUND_ID = "rbxassetid://95495457829413"
+local TORNADO_GROUND_RAY_HEIGHT = 6
+local TORNADO_GROUND_RAY_DEPTH = 38
+local TORNADO_MAX_GROUND_ABOVE = 2.5
+local TORNADO_MAX_GROUND_BELOW = 14
+
+local function isPlayerAlive(player)
+	if player:GetAttribute("IsDowned") == true then
+		return false
+	end
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	return humanoid ~= nil and root ~= nil and humanoid.Health > 0
+end
 
 local function getEquippedTool(player, weaponName)
 	local character = player.Character
@@ -856,9 +876,31 @@ local function getGroundImpactPosition(player, position)
 	return result and result.Position or position
 end
 
-local function getTornadoAsset()
-	local current = ReplicatedStorage
-	for _, childName in TORNADO_ASSET_PATH do
+local function getTornadoGroundPosition(player, position)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local referenceY = root and root.Position.Y or position.Y
+	local rayOrigin = Vector3.new(position.X, referenceY + TORNADO_GROUND_RAY_HEIGHT, position.Z)
+	local result = Workspace:Raycast(
+		rayOrigin,
+		Vector3.new(0, -TORNADO_GROUND_RAY_DEPTH, 0),
+		getMeteorRaycastParams(player)
+	)
+
+	if result then
+		local verticalOffset = result.Position.Y - referenceY
+		if verticalOffset <= TORNADO_MAX_GROUND_ABOVE and verticalOffset >= -TORNADO_MAX_GROUND_BELOW then
+			return result.Position
+		end
+	end
+
+	local fallbackY = if root then root.Position.Y - 2.8 else position.Y
+	return Vector3.new(position.X, fallbackY, position.Z)
+end
+
+local function getChildAtPath(root, path)
+	local current = root
+	for _, childName in path do
 		current = findChildCaseInsensitive(current, childName)
 		if not current then
 			return nil
@@ -866,6 +908,93 @@ local function getTornadoAsset()
 	end
 
 	return current
+end
+
+local function getTornadoVFXRoot()
+	for _, path in TORNADO_VFX_ROOT_PATHS do
+		local root = getChildAtPath(ReplicatedStorage, path)
+		if root then
+			return root
+		end
+	end
+
+	return nil
+end
+
+local function createTornadoCarrier(position)
+	local holder = Instance.new("Model")
+	holder.Name = "TornadoDisaster"
+
+	local anchor = Instance.new("Part")
+	anchor.Name = "TornadoVFXAnchor"
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.CastShadow = false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.new(1, 1, 1)
+	anchor.CFrame = CFrame.new(position)
+	anchor.Parent = holder
+
+	holder.PrimaryPart = anchor
+	return holder, anchor
+end
+
+local function mountLooseTornadoVFX(vfx, anchor)
+	if vfx:IsA("ParticleEmitter") then
+		local attachment = Instance.new("Attachment")
+		attachment.Name = "TornadoVFXAttachment"
+		attachment.Parent = anchor
+		vfx.Parent = attachment
+		return
+	end
+
+	if vfx:IsA("Attachment") then
+		vfx.Parent = anchor
+		return
+	end
+
+	local looseAttachment = nil
+	for _, descendant in vfx:GetDescendants() do
+		if descendant:IsA("Attachment") then
+			local parent = descendant.Parent
+			if not parent or (not parent:IsA("BasePart") and not parent:IsA("Bone") and parent ~= Workspace.Terrain) then
+				descendant.Parent = anchor
+			end
+		elseif descendant:IsA("ParticleEmitter") then
+			local parent = descendant.Parent
+			if parent and (parent:IsA("Attachment") or parent:IsA("BasePart")) then
+				continue
+			end
+
+			if not looseAttachment then
+				looseAttachment = Instance.new("Attachment")
+				looseAttachment.Name = "TornadoLooseParticles"
+				looseAttachment.Parent = anchor
+			end
+
+			descendant.Parent = looseAttachment
+		end
+	end
+end
+
+local function getTornadoAsset()
+	local root = getTornadoVFXRoot()
+	if not root then
+		return nil
+	end
+
+	local asset = findAssetByNames(root, TORNADO_ASSET_NAMES)
+	if asset then
+		return asset
+	end
+
+	if root:IsA("Model") or root:IsA("BasePart") then
+		return root
+	end
+
+	return nil
 end
 
 local function prepareTornadoBasePart(part)
@@ -877,6 +1006,11 @@ local function prepareTornadoBasePart(part)
 end
 
 local function activateTornadoEmitter(emitter)
+	if emitter.Rate <= 0 then
+		local sustainRate = emitter:GetAttribute("SustainRate") or emitter:GetAttribute("TornadoRate")
+		emitter.Rate = if typeof(sustainRate) == "number" and sustainRate > 0 then sustainRate else 35
+	end
+
 	emitter.Enabled = true
 
 	local burstCount = emitter:GetAttribute("EmitCount")
@@ -916,6 +1050,18 @@ local function setTornadoVisualCFrame(visual, cframe)
 		visual:PivotTo(cframe)
 	elseif visual:IsA("BasePart") then
 		visual.CFrame = cframe
+	else
+		local pivotPart = visual:FindFirstChildWhichIsA("BasePart", true)
+		if not pivotPart then
+			return
+		end
+
+		local delta = cframe * pivotPart.CFrame:Inverse()
+		for _, descendant in visual:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.CFrame = delta * descendant.CFrame
+			end
+		end
 	end
 end
 
@@ -986,26 +1132,36 @@ local function createTornadoVisual(position, config)
 		return createFallbackTornadoVisual(position, config)
 	end
 
+	local holder, anchor = createTornadoCarrier(position)
 	local visual = template:Clone()
-	visual.Name = "TornadoDisaster"
+	visual.Name = "TornadoVFX"
+	local mountedLooseVFX = false
 	if visual:IsA("Model") then
 		if config.VFXScale and config.VFXScale ~= 1 then
 			pcall(function()
 				visual:ScaleTo(config.VFXScale)
 			end)
 		end
-		visual:PivotTo(CFrame.new(position))
+		setTornadoVisualCFrame(visual, CFrame.new(position))
+		visual.Parent = holder
 	elseif visual:IsA("BasePart") then
 		if config.VFXScale and config.VFXScale ~= 1 then
 			visual.Size *= config.VFXScale
 		end
 		visual.CFrame = CFrame.new(position)
+		visual.Parent = holder
+	else
+		mountLooseTornadoVFX(visual, anchor)
+		mountedLooseVFX = true
 	end
 
-	visual.Parent = Workspace
-	prepareTornadoVFX(visual)
-	Debris:AddItem(visual, (config.Duration or 4) + 1.5)
-	return visual
+	if not mountedLooseVFX then
+		mountLooseTornadoVFX(visual, anchor)
+	end
+	holder.Parent = Workspace
+	prepareTornadoVFX(holder)
+	Debris:AddItem(holder, (config.Duration or 4) + 1.5)
+	return holder
 end
 
 local function getTornadoVictims(position, radius)
@@ -1152,7 +1308,7 @@ local function runTornadoProjectile(player, startPosition, direction, config, to
 		end
 
 		position += travelDirection * speed * deltaTime
-		position = getGroundImpactPosition(player, position) + Vector3.new(0, 0.35, 0)
+		position = getTornadoGroundPosition(player, position) + Vector3.new(0, 0.35, 0)
 		setTornadoVisualCFrame(visual, CFrame.new(position, position + travelDirection))
 
 		if now >= nextDamageAt then
@@ -1375,6 +1531,10 @@ local function upgradeTornado(player)
 end
 
 local function canCast(player, weaponName, config, cooldownOverride)
+	if not isPlayerAlive(player) then
+		return false, nil
+	end
+
 	local tool = getEquippedTool(player, weaponName)
 	if not tool then
 		return false, nil
@@ -1578,7 +1738,7 @@ local function castTornado(player, direction, targetPosition)
 
 	flatDirection = flatDirection.Unit
 	local handPosition = getHandPosition(character, root)
-	local startPosition = getGroundImpactPosition(player, handPosition + (flatDirection * 5)) + Vector3.new(0, 0.35, 0)
+	local startPosition = getTornadoGroundPosition(player, handPosition + (flatDirection * 5)) + Vector3.new(0, 0.35, 0)
 
 	task.spawn(runTornadoProjectile, player, startPosition, flatDirection, config, tornadoLevel)
 end

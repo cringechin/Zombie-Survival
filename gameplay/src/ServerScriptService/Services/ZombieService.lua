@@ -19,7 +19,6 @@ local ZombieService = {}
 ZombieService.Order = 50
 
 local zombiesFolder = Workspace:WaitForChild("Zombies")
-local spawnsFolder = Workspace:WaitForChild("ZombieSpawns")
 local bossLightningVfxEvent = ReplicatedStorage:FindFirstChild("BossLightningVfxEvent")
 if not bossLightningVfxEvent then
 	bossLightningVfxEvent = Instance.new("RemoteEvent")
@@ -32,10 +31,15 @@ local liveZombieList = {}
 local liveZombieListDirty = false
 local modelToNpc = {}
 local updateCursor = 1
-local recentlyUsedSpawns = {}
 local zombieSpawnWeights = GameConfig.ZombieSpawnWeights or {}
 local activeBoss = nil
 local getLiveCap
+
+local SPAWN_HEIGHT_OFFSET = Vector3.new(0, 3, 0)
+local SPAWN_GROUND_RAY_HEIGHT = 4
+local SPAWN_GROUND_RAY_DEPTH = 28
+local MAX_SPAWN_GROUND_ABOVE = 1.5
+local MAX_SPAWN_GROUND_BELOW = 8
 
 local function getAlivePlayerRoots()
 	local roots = {}
@@ -107,57 +111,23 @@ local function getSpawnExclusions()
 	return exclusions
 end
 
-local function getUsableSpawnParts()
-	local spawnParts = {}
-
-	for _, spawnPart in spawnsFolder:GetChildren() do
-		if spawnPart:IsA("BasePart") then
-			table.insert(spawnParts, spawnPart)
-		end
-	end
-
-	return spawnParts
-end
-
-local function rememberSpawn(spawnPart)
-	recentlyUsedSpawns[spawnPart] = os.clock()
-end
-
-local function getRandomSpawnPart()
-	local spawnParts = getUsableSpawnParts()
-	if #spawnParts == 0 then
-		return nil
-	end
-
-	local now = os.clock()
-	local candidates = {}
-
-	for _, spawnPart in spawnParts do
-		local lastUsedAt = recentlyUsedSpawns[spawnPart]
-		if not lastUsedAt or now - lastUsedAt > 2.5 then
-			table.insert(candidates, spawnPart)
-		end
-	end
-
-	if #candidates == 0 then
-		candidates = spawnParts
-	end
-
-	local spawnPart = candidates[math.random(1, #candidates)]
-	rememberSpawn(spawnPart)
-
-	return spawnPart
-end
-
 local function getGroundPosition(position)
 	local raycastParams = RaycastParams.new()
 	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 	raycastParams.FilterDescendantsInstances = getSpawnExclusions()
 
-	local origin = position + Vector3.new(0, 70, 0)
-	local result = Workspace:Raycast(origin, Vector3.new(0, -180, 0), raycastParams)
+	local origin = position + Vector3.new(0, SPAWN_GROUND_RAY_HEIGHT, 0)
+	local result = Workspace:Raycast(origin, Vector3.new(0, -SPAWN_GROUND_RAY_DEPTH, 0), raycastParams)
+	if not result then
+		return nil
+	end
 
-	return result and result.Position or nil
+	local verticalOffset = result.Position.Y - position.Y
+	if verticalOffset > MAX_SPAWN_GROUND_ABOVE or verticalOffset < -MAX_SPAWN_GROUND_BELOW then
+		return nil
+	end
+
+	return result.Position
 end
 
 local function getGroundPositionForEffect(position)
@@ -187,8 +157,8 @@ local function isFreeSpawnSpace(position)
 	return true
 end
 
-local function getPlayerSpawnCFrame()
-	local roots = getAlivePlayerRoots()
+local function getPlayerSpawnCFrame(roots)
+	roots = roots or getAlivePlayerRoots()
 	if #roots == 0 then
 		return nil
 	end
@@ -201,7 +171,7 @@ local function getPlayerSpawnCFrame()
 		local groundPosition = getGroundPosition(targetRoot.Position + offset)
 
 		if groundPosition and isFreeSpawnSpace(groundPosition) then
-			local spawnPosition = groundPosition + Vector3.new(0, 3, 0)
+			local spawnPosition = groundPosition + SPAWN_HEIGHT_OFFSET
 			local lookAtPosition = Vector3.new(targetRoot.Position.X, spawnPosition.Y, targetRoot.Position.Z)
 
 			return CFrame.lookAt(spawnPosition, lookAtPosition)
@@ -211,13 +181,7 @@ local function getPlayerSpawnCFrame()
 	return nil
 end
 
-local function addSpawnJitter(cframe)
-	local radius = math.random(25, 80) / 10
-	local angle = math.random() * math.pi * 2
-	local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
-
-	return cframe + offset
-end
+local getSpawnCFrame
 
 local function getSpawnCFrameNearPosition(position, index, minDistance, maxDistance)
 	for _ = 1, GameConfig.PlayerSpawnAttempts do
@@ -227,22 +191,18 @@ local function getSpawnCFrameNearPosition(position, index, minDistance, maxDista
 		local groundPosition = getGroundPosition(position + offset)
 
 		if groundPosition and isFreeSpawnSpace(groundPosition) then
-			return CFrame.lookAt(groundPosition + Vector3.new(0, 3, 0), position)
+			return CFrame.lookAt(groundPosition + SPAWN_HEIGHT_OFFSET, position)
 		end
 	end
 
 	return getSpawnCFrame(index)
 end
 
-local function getSpawnCFrame(index)
-	local playerSpawnCFrame = getPlayerSpawnCFrame()
+getSpawnCFrame = function(index)
+	local roots = getAlivePlayerRoots()
+	local playerSpawnCFrame = getPlayerSpawnCFrame(roots)
 	if playerSpawnCFrame then
 		return playerSpawnCFrame
-	end
-
-	local spawnPart = getRandomSpawnPart()
-	if spawnPart then
-		return addSpawnJitter(spawnPart.CFrame + Vector3.new(0, 3, 0))
 	end
 
 	local angle = (index * 0.9) + (math.random() * 0.5)
@@ -839,7 +799,31 @@ function ZombieService.damageNpc(npc, player, damage)
 	return true
 end
 
+local function handleZombieHitReport(data, player)
+	if typeof(data) ~= "table" or typeof(player) ~= "Instance" or not player:IsA("Player") then
+		return
+	end
+
+	local zombieInstance = data.zombie
+	if typeof(zombieInstance) ~= "Instance" or not zombieInstance:IsDescendantOf(zombiesFolder) then
+		return
+	end
+
+	local zombieModel = if zombieInstance:IsA("Model") then zombieInstance else zombieInstance:FindFirstAncestorOfClass("Model")
+	if not zombieModel or not zombieModel:IsDescendantOf(zombiesFolder) then
+		return
+	end
+
+	local npc = modelToNpc[zombieModel]
+	if not npc or not liveZombies[npc] then
+		return
+	end
+
+	npc:TryApplyClientHit(player, data.attackToken, data.playerPosition)
+end
+
 function ZombieService.start()
+	Network.zombieHitReport.listen(handleZombieHitReport)
 	RunService.Heartbeat:Connect(stepLightweightZombies)
 end
 

@@ -13,6 +13,18 @@ local TORNADO_CONFIG = DisasterWeaponConfig.Tornado
 local localPlayer = Players.LocalPlayer
 local tool = script.Parent
 
+local function isLocalPlayerAlive()
+	if localPlayer:GetAttribute("IsDowned") == true then
+		return false
+	end
+
+	local character = localPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	return humanoid ~= nil and root ~= nil and humanoid.Health > 0
+end
+
 local function getFlatAimDirection()
 	local camera = Workspace.CurrentCamera
 	if not camera then
@@ -51,6 +63,10 @@ local function getFlatAimDirection()
 end
 
 tool.Activated:Connect(function()
+	if not isLocalPlayerAlive() then
+		return
+	end
+
 	local cooldownEndsAt = tool:GetAttribute("CooldownEndsAt")
 	if typeof(cooldownEndsAt) == "number" and cooldownEndsAt > os.clock() then
 		return

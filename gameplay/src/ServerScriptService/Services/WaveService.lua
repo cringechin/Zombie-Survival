@@ -211,6 +211,46 @@ local function getSpawnInGroupDelay()
 	return GameConfig.TimeBetweenZombiesInGroup or 0
 end
 
+local function getWaveSpawnDuration(waveNumber)
+	local baseDuration = GameConfig.WaveSpawnDurationBase or 55
+	local perWave = GameConfig.WaveSpawnDurationPerWave or 18
+
+	return baseDuration + (math.max(waveNumber, 1) - 1) * perWave
+end
+
+local function getWaveSpawnInterval(waveNumber, zombiesToSpawn)
+	if GameConfig.StressTestEnabled then
+		return getSpawnGroupDelay()
+	end
+
+	local duration = getWaveSpawnDuration(waveNumber)
+	local interval = duration / math.max(zombiesToSpawn, 1)
+	local minInterval = GameConfig.MinWaveSpawnInterval or 0.65
+	local maxInterval = GameConfig.MaxWaveSpawnInterval or 2.4
+
+	return math.clamp(interval, minInterval, maxInterval)
+end
+
+local function getLivePressureCap(waveNumber, zombiesToSpawn)
+	if GameConfig.StressTestEnabled then
+		return GameConfig.StressTestLiveCap or GameConfig.MaxLiveZombies
+	end
+
+	local playerCount = math.max(#Players:GetPlayers(), 1)
+	local hardCap = math.min(GameConfig.MaxLiveZombies, playerCount * GameConfig.MaxLiveZombiesPerPlayer)
+	local pressureCap = (GameConfig.LiveZombiePressureBase or 8)
+		+ (playerCount * (GameConfig.LiveZombiePressurePerPlayer or 7))
+		+ (waveNumber * (GameConfig.LiveZombiePressurePerWave or 3))
+	local configuredMax = GameConfig.LiveZombiePressureMax or hardCap
+
+	return math.max(1, math.min(math.floor(pressureCap), configuredMax, hardCap, zombiesToSpawn))
+end
+
+local function getWaveZombiesLeft(zombiesToSpawn, spawned)
+	local unspawned = math.max(zombiesToSpawn - spawned, 0)
+	return unspawned + ZombieService.getLiveCount()
+end
+
 local function run()
 	while running do
 		if currentWave >= TOTAL_WAVES then
@@ -258,13 +298,15 @@ local function run()
 				wave = currentWave,
 				status = WaveStatus.Started,
 				seconds = 0,
-				zombiesRemaining = 0,
+				zombiesRemaining = 1,
 				zombiesTotal = 0,
 				zombiesAlive = 1,
 			})
 			ZombieService.spawnLightningBoss(currentWave)
 		else
 			local zombiesToSpawn = getWaveSize(currentWave)
+			local spawnInterval = getWaveSpawnInterval(currentWave, zombiesToSpawn)
+			local livePressureCap = getLivePressureCap(currentWave, zombiesToSpawn)
 			local spawned = 0
 			sendWaveStatus({
 				wave = currentWave,
@@ -276,12 +318,22 @@ local function run()
 			})
 
 			while spawned < zombiesToSpawn and running and not requestedWave do
-				if not ZombieService.canSpawn() then
-					task.wait(getSpawnGroupDelay())
+				local liveCount = ZombieService.getLiveCount()
+				if liveCount >= livePressureCap or not ZombieService.canSpawn() then
+					sendWaveStatus({
+						wave = currentWave,
+						status = WaveStatus.Started,
+						seconds = 0,
+						zombiesRemaining = getWaveZombiesLeft(zombiesToSpawn, spawned),
+						zombiesTotal = zombiesToSpawn,
+						zombiesAlive = liveCount,
+					})
+					task.wait(math.min(spawnInterval, 1))
 					continue
 				end
 
-				local groupSize = getSpawnGroupSize(zombiesToSpawn - spawned)
+				local pressureRoom = math.max(livePressureCap - liveCount, 1)
+				local groupSize = math.min(getSpawnGroupSize(zombiesToSpawn - spawned), pressureRoom)
 				local spawnedThisGroup = 0
 
 				while
@@ -290,9 +342,14 @@ local function run()
 					and ZombieService.canSpawn()
 					and not requestedWave
 				do
-					spawned += 1
+					local nextSpawnIndex = spawned + 1
+					local zombie = ZombieService.spawnZombie(currentWave, nextSpawnIndex)
+					if not zombie then
+						break
+					end
+
+					spawned = nextSpawnIndex
 					spawnedThisGroup += 1
-					ZombieService.spawnZombie(currentWave, spawned)
 
 					if spawnedThisGroup < groupSize then
 						task.wait(getSpawnInGroupDelay())
@@ -302,23 +359,24 @@ local function run()
 					wave = currentWave,
 					status = WaveStatus.Started,
 					seconds = 0,
-					zombiesRemaining = math.max(zombiesToSpawn - spawned, 0),
+					zombiesRemaining = getWaveZombiesLeft(zombiesToSpawn, spawned),
 					zombiesTotal = zombiesToSpawn,
 					zombiesAlive = ZombieService.getLiveCount(),
 				})
 
-				task.wait(getSpawnGroupDelay())
+				task.wait(math.max(getSpawnGroupDelay(), spawnInterval * math.max(spawnedThisGroup, 1)))
 			end
 		end
 
 		while ZombieService.getLiveCount() > 0 and running and not requestedWave do
+			local liveCount = ZombieService.getLiveCount()
 			sendWaveStatus({
 				wave = currentWave,
 				status = WaveStatus.Started,
 				seconds = 0,
-				zombiesRemaining = 0,
+				zombiesRemaining = liveCount,
 				zombiesTotal = 0,
-				zombiesAlive = ZombieService.getLiveCount(),
+				zombiesAlive = liveCount,
 			})
 			task.wait(1)
 		end

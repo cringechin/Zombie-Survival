@@ -26,7 +26,7 @@ end
 
 function GameplayStyle.stroke(_color, thickness, transparency)
 	return e("UIStroke", {
-		Color = GameplayStyle.BLACK,
+		Color = _color or GameplayStyle.BLACK,
 		Thickness = thickness or 2,
 		Transparency = transparency or 0,
 	})

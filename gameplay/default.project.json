@@ -16,6 +16,10 @@
             }
           }
         },
+        "Disasters": {
+          "$className": "Folder",
+          "$ignoreUnknownInstances": true
+        },
         "VFX": {
           "$className": "Folder",
           "Bosses": {

@@ -38,6 +38,18 @@ local state = {
 	StartedAt = 0,
 }
 
+local function isLocalPlayerAlive()
+	if localPlayer:GetAttribute("IsDowned") == true then
+		return false
+	end
+
+	local character = localPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	return humanoid ~= nil and root ~= nil and humanoid.Health > 0
+end
+
 local function snapToGrid(position, gridSize)
 	if gridSize <= 0 then
 		return position
@@ -335,6 +347,11 @@ local function updatePlacementPreview()
 		return
 	end
 
+	if not isLocalPlayerAlive() then
+		cancelPlacement()
+		return
+	end
+
 	local character = localPlayer.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -398,6 +415,11 @@ local function bindPlacementInputs()
 		end
 
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			if not isLocalPlayerAlive() then
+				cancelPlacement()
+				return
+			end
+
 			if state.LastCanPlace and state.LastPlacementRequest and state.Gear then
 				Network.gearPurchaseRequest.send({
 					gear = state.Gear,
@@ -426,6 +448,11 @@ local function getConfigForGear(gear)
 end
 
 function GearPlacementController.beginGearPlacement(gear)
+	if not isLocalPlayerAlive() then
+		cancelPlacement()
+		return false
+	end
+
 	local config = getConfigForGear(gear)
 	if not config then
 		return false
@@ -456,5 +483,11 @@ end
 function GearPlacementController.cancelPlacement()
 	cancelPlacement()
 end
+
+localPlayer:GetAttributeChangedSignal("IsDowned"):Connect(function()
+	if localPlayer:GetAttribute("IsDowned") == true then
+		cancelPlacement()
+	end
+end)
 
 return GearPlacementController

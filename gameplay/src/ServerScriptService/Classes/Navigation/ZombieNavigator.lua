@@ -5,16 +5,18 @@ local Workspace = game:GetService("Workspace")
 local ZombieNavigator = {}
 ZombieNavigator.__index = ZombieNavigator
 
-local NEIGHBORS = {
-	{ X = 1, Z = 0, Cost = 1 },
-	{ X = -1, Z = 0, Cost = 1 },
-	{ X = 0, Z = 1, Cost = 1 },
-	{ X = 0, Z = -1, Cost = 1 },
-	{ X = 1, Z = 1, Cost = 1.414 },
-	{ X = 1, Z = -1, Cost = 1.414 },
-	{ X = -1, Z = 1, Cost = 1.414 },
-	{ X = -1, Z = -1, Cost = 1.414 },
-}
+local ROUTE_CELL_SIZE = 28
+local ROUTE_Y_CELL_SIZE = 10
+local SHARED_REPATH_INTERVAL = 0.85
+local FAILED_REPATH_INTERVAL = 0.45
+local TARGET_REPATH_DISTANCE = 7
+local ANCHOR_REPATH_DISTANCE = 9
+local SEPARATION_REFRESH_INTERVAL = 0.12
+local ROUTE_CACHE_TTL = 8
+local MAX_ROUTE_CACHE_ENTRIES = 24
+local FORCE_REPATH_COOLDOWN = 0.2
+
+local routeCache = {}
 
 local function flat(vector)
 	return Vector3.new(vector.X, 0, vector.Z)
@@ -35,6 +37,10 @@ local function rotate2D(vector, radians)
 	return Vector3.new((vector.X * cosine) - (vector.Z * sine), 0, (vector.X * sine) + (vector.Z * cosine))
 end
 
+local function getZombiesFolder()
+	return Workspace:FindFirstChild("Zombies")
+end
+
 local function getCharacters()
 	local characters = {}
 
@@ -47,37 +53,235 @@ local function getCharacters()
 	return characters
 end
 
+local function bucket(value, cellSize)
+	return math.floor((value / cellSize) + 0.5)
+end
+
+local function getRouteKey(startPosition, targetPosition)
+	return table.concat({
+		bucket(startPosition.X, ROUTE_CELL_SIZE),
+		bucket(startPosition.Y, ROUTE_Y_CELL_SIZE),
+		bucket(startPosition.Z, ROUTE_CELL_SIZE),
+		bucket(targetPosition.X, ROUTE_CELL_SIZE),
+		bucket(targetPosition.Y, ROUTE_Y_CELL_SIZE),
+		bucket(targetPosition.Z, ROUTE_CELL_SIZE),
+	}, ":")
+end
+
+local function clearRouteConnection(route)
+	if route.BlockedConnection then
+		route.BlockedConnection:Disconnect()
+		route.BlockedConnection = nil
+	end
+end
+
+local function removeRoute(key)
+	local route = routeCache[key]
+	if not route then
+		return
+	end
+
+	clearRouteConnection(route)
+	routeCache[key] = nil
+end
+
+local function cleanupRouteCache(now)
+	local count = 0
+	local oldestKey = nil
+	local oldestUsedAt = math.huge
+
+	for key, route in routeCache do
+		count += 1
+
+		if now - route.LastUsedAt > ROUTE_CACHE_TTL then
+			removeRoute(key)
+		elseif route.LastUsedAt < oldestUsedAt then
+			oldestKey = key
+			oldestUsedAt = route.LastUsedAt
+		end
+	end
+
+	if count > MAX_ROUTE_CACHE_ENTRIES and oldestKey then
+		removeRoute(oldestKey)
+	end
+end
+
+local function createRoute(key)
+	local route = {
+		Key = key,
+		Id = 0,
+		Points = {},
+		Actions = {},
+		TargetPosition = nil,
+		AnchorPosition = nil,
+		NextRefreshAt = 0,
+		FailedUntil = 0,
+		LastComputedAt = 0,
+		LastForceAt = 0,
+		LastUsedAt = os.clock(),
+		Computing = false,
+		BlockedConnection = nil,
+		Path = nil,
+	}
+
+	routeCache[key] = route
+	return route
+end
+
+local function shouldRefreshRoute(route, anchorPosition, targetPosition, force)
+	if force or #route.Points == 0 then
+		return true
+	end
+
+	local now = os.clock()
+	if now < route.NextRefreshAt then
+		return false
+	end
+
+	if not route.TargetPosition or not route.AnchorPosition then
+		return true
+	end
+
+	local targetMoved = flat(targetPosition - route.TargetPosition).Magnitude >= TARGET_REPATH_DISTANCE
+	local anchorMoved = flat(anchorPosition - route.AnchorPosition).Magnitude >= ANCHOR_REPATH_DISTANCE
+	if targetMoved or anchorMoved then
+		return true
+	end
+
+	route.NextRefreshAt = now + SHARED_REPATH_INTERVAL
+	return false
+end
+
+local function buildRobloxPath(config, anchorPosition, targetPosition)
+	local path = PathfindingService:CreatePath({
+		AgentRadius = config.AgentRadius,
+		AgentHeight = config.AgentHeight,
+		AgentCanJump = false,
+		AgentCanClimb = config.AgentCanClimb,
+		WaypointSpacing = config.PathWaypointSpacing,
+		Costs = config.PathCosts,
+	})
+
+	local success = pcall(function()
+		path:ComputeAsync(anchorPosition, targetPosition)
+	end)
+
+	if not success or path.Status ~= Enum.PathStatus.Success then
+		return nil, { targetPosition }, {}
+	end
+
+	local points = {}
+	local actions = {}
+
+	for index, waypoint in path:GetWaypoints() do
+		if waypoint.Action == Enum.PathWaypointAction.Jump then
+			return nil, { targetPosition }, {}
+		end
+
+		if index > 1 then
+			table.insert(points, waypoint.Position)
+			table.insert(actions, waypoint.Action)
+		end
+	end
+
+	if #points == 0 then
+		table.insert(points, targetPosition)
+	end
+
+	return path, points, actions
+end
+
+local function getRoute(config, root, destination, force)
+	if not root or not destination then
+		return nil
+	end
+
+	local now = os.clock()
+	cleanupRouteCache(now)
+
+	local key = getRouteKey(root.Position, destination)
+	local route = routeCache[key] or createRoute(key)
+	route.LastUsedAt = now
+
+	if now < route.FailedUntil and not force then
+		return route
+	end
+
+	if route.Computing or not shouldRefreshRoute(route, root.Position, destination, force) then
+		return route
+	end
+
+	route.Computing = true
+	route.NextRefreshAt = now + SHARED_REPATH_INTERVAL
+
+	local path, points, actions = buildRobloxPath(config, root.Position, destination)
+
+	clearRouteConnection(route)
+	route.Id += 1
+	route.Path = path
+	route.Points = points
+	route.Actions = actions
+	route.TargetPosition = destination
+	route.AnchorPosition = root.Position
+	route.FailedUntil = if path then 0 else now + FAILED_REPATH_INTERVAL
+	route.LastComputedAt = os.clock()
+
+	if path then
+		route.BlockedConnection = path.Blocked:Connect(function()
+			route.NextRefreshAt = 0
+		end)
+	end
+
+	route.Computing = false
+	return route
+end
+
+local function findNearestWaypointIndex(points, position, reachDistance)
+	local bestIndex = 1
+	local bestDistance = math.huge
+
+	for index, point in points do
+		local distance = flat(point - position).Magnitude
+		if distance < bestDistance then
+			bestIndex = index
+			bestDistance = distance
+		end
+	end
+
+	if bestIndex < #points and bestDistance <= reachDistance * 1.35 then
+		bestIndex += 1
+	end
+
+	return bestIndex
+end
+
 function ZombieNavigator.new(npc, config)
 	local self = setmetatable({}, ZombieNavigator)
 
 	self.NPC = npc
 	self.Config = config
+	self._routeKey = nil
+	self._routeId = 0
+	self._pathIndex = 1
 	self._avoidDirection = Vector3.zero
 	self._avoidUntil = 0
 	self._lastStuckCheck = os.clock()
 	self._lastPosition = npc.Root and npc.Root.Position or Vector3.zero
-	self._path = {}
-	self._pathIndex = 1
-	self._nextRepathTime = 0
-	self._lastDestination = nil
-	self._blockedConnection = nil
+	self._nextSeparationAt = 0
 	self._smoothedSeparation = Vector3.zero
 
 	return self
 end
 
-function ZombieNavigator:_clearPathConnection()
-	if self._blockedConnection then
-		self._blockedConnection:Disconnect()
-		self._blockedConnection = nil
-	end
-end
-
 function ZombieNavigator:_getExclusions()
 	local exclusions = {
 		self.NPC.Model,
-		Workspace:WaitForChild("Zombies"),
 	}
+
+	local zombiesFolder = getZombiesFolder()
+	if zombiesFolder then
+		table.insert(exclusions, zombiesFolder)
+	end
 
 	for _, character in getCharacters() do
 		table.insert(exclusions, character)
@@ -92,313 +296,6 @@ function ZombieNavigator:_getRaycastParams()
 	raycastParams.FilterDescendantsInstances = self:_getExclusions()
 
 	return raycastParams
-end
-
-function ZombieNavigator:_getOverlapParams()
-	local overlapParams = OverlapParams.new()
-	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
-	overlapParams.FilterDescendantsInstances = self:_getExclusions()
-
-	return overlapParams
-end
-
-function ZombieNavigator:_getGroundPosition(position)
-	local origin = position + Vector3.new(0, 24, 0)
-	local result = Workspace:Raycast(origin, Vector3.new(0, -140, 0), self:_getRaycastParams())
-
-	return result and result.Position or position
-end
-
-function ZombieNavigator:_isPositionWalkable(position)
-	local groundPosition = self:_getGroundPosition(position)
-	local boxSize = Vector3.new(self.Config.GridSize * 0.72, 5, self.Config.GridSize * 0.72)
-	local boxCFrame = CFrame.new(groundPosition + Vector3.new(0, boxSize.Y / 2 + 0.2, 0))
-	local parts = Workspace:GetPartBoundsInBox(boxCFrame, boxSize, self:_getOverlapParams())
-
-	for _, part in parts do
-		if part.CanCollide and part.Transparency < 1 then
-			return false
-		end
-	end
-
-	return true
-end
-
-function ZombieNavigator:_hasLineOfSight(fromPosition, toPosition)
-	local start = fromPosition + Vector3.new(0, 2, 0)
-	local finish = toPosition + Vector3.new(0, 2, 0)
-	local result = Workspace:Raycast(start, finish - start, self:_getRaycastParams())
-
-	return result == nil
-end
-
-function ZombieNavigator:_hasWalkableLine(fromPosition, toPosition)
-	if not self:_hasLineOfSight(fromPosition, toPosition) then
-		return false
-	end
-
-	local delta = flat(toPosition - fromPosition)
-	local distance = delta.Magnitude
-	if distance <= 0.05 then
-		return true
-	end
-
-	local steps = math.max(math.ceil(distance / (self.Config.GridSize * 0.5)), 1)
-	local previousGround = self:_getGroundPosition(fromPosition)
-
-	for step = 1, steps do
-		local alpha = step / steps
-		local samplePosition = fromPosition:Lerp(toPosition, alpha)
-		local groundPosition = self:_getGroundPosition(samplePosition)
-
-		if math.abs(groundPosition.Y - previousGround.Y) > self.Config.MaxGroundStepHeight then
-			return false
-		end
-
-		if not self:_isPositionWalkable(groundPosition) then
-			return false
-		end
-
-		previousGround = groundPosition
-	end
-
-	return true
-end
-
-function ZombieNavigator:_toCell(position)
-	local gridSize = self.Config.GridSize
-
-	return {
-		X = math.floor((position.X / gridSize) + 0.5),
-		Z = math.floor((position.Z / gridSize) + 0.5),
-	}
-end
-
-function ZombieNavigator:_toWorld(cell, y)
-	local gridSize = self.Config.GridSize
-	local position = Vector3.new(cell.X * gridSize, y, cell.Z * gridSize)
-	local ground = self:_getGroundPosition(position)
-
-	return Vector3.new(position.X, ground.Y, position.Z)
-end
-
-local function cellKey(cell)
-	return `{cell.X}:{cell.Z}`
-end
-
-local function heuristic(a, b)
-	local dx = a.X - b.X
-	local dz = a.Z - b.Z
-
-	return math.sqrt((dx * dx) + (dz * dz))
-end
-
-local function popBest(open)
-	local bestIndex = 1
-	local bestScore = open[1].F
-
-	for index = 2, #open do
-		if open[index].F < bestScore then
-			bestScore = open[index].F
-			bestIndex = index
-		end
-	end
-
-	local node = open[bestIndex]
-	table.remove(open, bestIndex)
-
-	return node
-end
-
-function ZombieNavigator:_reconstructPath(nodes, goalKey, y)
-	local points = {}
-	local currentKey = goalKey
-
-	while currentKey do
-		local node = nodes[currentKey]
-		table.insert(points, 1, self:_toWorld(node.Cell, y))
-		currentKey = node.Parent
-	end
-
-	return points
-end
-
-function ZombieNavigator:_smoothPath(points)
-	if #points <= 2 then
-		return points
-	end
-
-	local smoothed = { points[1] }
-	local anchorIndex = 1
-
-	while anchorIndex < #points do
-		local nextIndex = #points
-
-		while nextIndex > anchorIndex + 1 do
-			if self:_hasWalkableLine(points[anchorIndex], points[nextIndex]) then
-				break
-			end
-
-			nextIndex -= 1
-		end
-
-		table.insert(smoothed, points[nextIndex])
-		anchorIndex = nextIndex
-	end
-
-	return smoothed
-end
-
-function ZombieNavigator:_findPath(startPosition, destination)
-	local startCell = self:_toCell(startPosition)
-	local goalCell = self:_toCell(destination)
-	local startKey = cellKey(startCell)
-	local goalKey = cellKey(goalCell)
-	local nodes = {
-		[startKey] = {
-			Cell = startCell,
-			G = 0,
-			F = heuristic(startCell, goalCell),
-			Parent = nil,
-		},
-	}
-	local open = { nodes[startKey] }
-	local closed = {}
-	local searched = 0
-	local bestKey = startKey
-	local bestHeuristic = heuristic(startCell, goalCell)
-
-	while #open > 0 and searched < self.Config.MaxPathNodes do
-		searched += 1
-		local current = popBest(open)
-		local currentKey = cellKey(current.Cell)
-		local currentHeuristic = heuristic(current.Cell, goalCell)
-
-		if currentHeuristic < bestHeuristic then
-			bestKey = currentKey
-			bestHeuristic = currentHeuristic
-		end
-
-		if currentKey == goalKey or currentHeuristic <= 1 then
-			return self:_smoothPath(self:_reconstructPath(nodes, currentKey, destination.Y))
-		end
-
-		closed[currentKey] = true
-
-		for _, neighbor in NEIGHBORS do
-			local neighborCell = {
-				X = current.Cell.X + neighbor.X,
-				Z = current.Cell.Z + neighbor.Z,
-			}
-			local neighborKey = cellKey(neighborCell)
-
-			if not closed[neighborKey] then
-				local worldPosition = self:_toWorld(neighborCell, destination.Y)
-				local diagonal = neighbor.X ~= 0 and neighbor.Z ~= 0
-				local canWalk = self:_isPositionWalkable(worldPosition)
-
-				if diagonal then
-					canWalk = canWalk
-						and self:_isPositionWalkable(
-							self:_toWorld({ X = current.Cell.X + neighbor.X, Z = current.Cell.Z }, destination.Y)
-						)
-						and self:_isPositionWalkable(
-							self:_toWorld({ X = current.Cell.X, Z = current.Cell.Z + neighbor.Z }, destination.Y)
-						)
-				end
-
-				if canWalk then
-					local gScore = current.G + neighbor.Cost
-					local existing = nodes[neighborKey]
-
-					if not existing or gScore < existing.G then
-						local node = existing or { Cell = neighborCell }
-						node.G = gScore
-						node.F = gScore + heuristic(neighborCell, goalCell)
-						node.Parent = currentKey
-						nodes[neighborKey] = node
-
-						if not existing then
-							table.insert(open, node)
-						end
-					end
-				end
-			end
-		end
-	end
-
-	if bestKey ~= startKey then
-		return self:_smoothPath(self:_reconstructPath(nodes, bestKey, destination.Y))
-	end
-
-	return {}
-end
-
-function ZombieNavigator:_refreshPath(destination)
-	if os.clock() < self._nextRepathTime then
-		return
-	end
-
-	self._nextRepathTime = os.clock() + self.Config.RepathInterval
-	self._lastDestination = destination
-
-	if self:_hasWalkableLine(self.NPC.Root.Position, destination) then
-		self:_clearPathConnection()
-		self._path = {}
-		self._pathIndex = 1
-		return
-	end
-
-	local path = PathfindingService:CreatePath({
-		AgentRadius = self.Config.AgentRadius,
-		AgentHeight = self.Config.AgentHeight,
-		AgentCanJump = false,
-		AgentCanClimb = self.Config.AgentCanClimb,
-		WaypointSpacing = self.Config.PathWaypointSpacing,
-		Costs = self.Config.PathCosts,
-	})
-
-	local success = pcall(function()
-		path:ComputeAsync(self.NPC.Root.Position, destination)
-	end)
-
-	if success and path.Status == Enum.PathStatus.Success then
-		local waypoints = path:GetWaypoints()
-		local points = {}
-
-		for index, waypoint in waypoints do
-			if index > 1 and waypoint.Action ~= Enum.PathWaypointAction.Jump then
-				table.insert(points, self:_getGroundPosition(waypoint.Position))
-			end
-		end
-
-		self:_clearPathConnection()
-		self._blockedConnection = path.Blocked:Connect(function(blockedWaypointIndex)
-			if blockedWaypointIndex >= self._pathIndex then
-				self:ForceRepath()
-			end
-		end)
-
-		self._path = self:_smoothPath(points)
-		self._pathIndex = 1
-		return
-	end
-
-	self:_clearPathConnection()
-	self._path = self:_findPath(self.NPC.Root.Position, destination)
-	self._pathIndex = math.min(2, #self._path)
-end
-
-function ZombieNavigator:_getPathTarget(destination)
-	self:_refreshPath(destination)
-
-	local point = self._path[self._pathIndex]
-	if point and (self.NPC.Root.Position - point).Magnitude <= self.Config.PathNodeReachDistance then
-		self._pathIndex += 1
-		point = self._path[self._pathIndex]
-	end
-
-	return point or destination
 end
 
 function ZombieNavigator:_isBlocked(direction, distance)
@@ -443,9 +340,19 @@ function ZombieNavigator:_getSeparation()
 		return Vector3.zero
 	end
 
-	local zombiesFolder = Workspace:WaitForChild("Zombies")
-	local separation = Vector3.zero
+	local now = os.clock()
+	if now < self._nextSeparationAt then
+		return self._smoothedSeparation
+	end
 
+	self._nextSeparationAt = now + SEPARATION_REFRESH_INTERVAL
+
+	local zombiesFolder = getZombiesFolder()
+	if not zombiesFolder then
+		return Vector3.zero
+	end
+
+	local separation = Vector3.zero
 	for _, model in zombiesFolder:GetChildren() do
 		if model ~= self.NPC.Model and model:IsA("Model") then
 			local otherRoot = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
@@ -454,14 +361,45 @@ function ZombieNavigator:_getSeparation()
 				local distance = away.Magnitude
 
 				if distance > 0.05 and distance < self.Config.SeparationRadius then
-					separation += away.Unit * ((self.Config.SeparationRadius - distance) / self.Config.SeparationRadius)
+					local strength = (self.Config.SeparationRadius - distance) / self.Config.SeparationRadius
+					separation += away.Unit * strength * strength
 				end
 			end
 		end
 	end
 
-	self._smoothedSeparation = self._smoothedSeparation:Lerp(separation, 0.18)
+	self._smoothedSeparation = self._smoothedSeparation:Lerp(separation, 0.28)
 	return self._smoothedSeparation
+end
+
+function ZombieNavigator:_getRoutePathTarget(destination)
+	local root = self.NPC.Root
+	if not root then
+		return destination, false
+	end
+
+	local route = getRoute(self.Config, root, destination, false)
+	if not route or #route.Points == 0 then
+		return destination, false
+	end
+
+	if self._routeKey ~= route.Key or self._routeId ~= route.Id then
+		self._routeKey = route.Key
+		self._routeId = route.Id
+		self._pathIndex = findNearestWaypointIndex(route.Points, root.Position, self.Config.PathNodeReachDistance)
+	end
+
+	while self._pathIndex < #route.Points
+		and flat(route.Points[self._pathIndex] - root.Position).Magnitude <= self.Config.PathNodeReachDistance
+	do
+		self._pathIndex += 1
+	end
+
+	if self._pathIndex >= #route.Points then
+		return destination, route.Path ~= nil
+	end
+
+	return route.Points[self._pathIndex] or destination, route.Path ~= nil
 end
 
 function ZombieNavigator:GetMovePosition(destination)
@@ -477,14 +415,14 @@ function ZombieNavigator:GetMovePosition(destination)
 			local toDestination = unitOrZero(flat(destination - root.Position))
 			self._avoidDirection = rotate2D(toDestination, if math.random() < 0.5 then math.rad(90) else math.rad(-90))
 			self._avoidUntil = os.clock() + self.Config.StuckAvoidanceTime
-			self._nextRepathTime = 0
+			self:ForceRepath()
 		end
 
 		self._lastPosition = root.Position
 		self._lastStuckCheck = os.clock()
 	end
 
-	local pathTarget = self:_getPathTarget(destination)
+	local pathTarget, hasRobloxPath = self:_getRoutePathTarget(destination)
 	local toPathTarget = flat(pathTarget - root.Position)
 	local desiredDirection = unitOrZero(toPathTarget)
 
@@ -492,17 +430,14 @@ function ZombieNavigator:GetMovePosition(destination)
 		return pathTarget
 	end
 
-	local hasPath = #self._path > 0
 	local avoidance = Vector3.zero
-
-	if hasPath then
-		if self:_isBlocked(desiredDirection, self.Config.ObstacleFeelerDistance * 0.75) then
-			self:ForceRepath()
-		end
-	elseif os.clock() < self._avoidUntil then
+	if os.clock() < self._avoidUntil then
 		avoidance = self._avoidDirection
-	else
-		avoidance = self:_getObstacleAvoidance(desiredDirection)
+	elseif self:_isBlocked(desiredDirection, self.Config.ObstacleFeelerDistance * 0.75) then
+		self:ForceRepath()
+		if not hasRobloxPath then
+			avoidance = self:_getObstacleAvoidance(desiredDirection)
+		end
 	end
 
 	local separation = self:_getSeparation()
@@ -521,7 +456,24 @@ function ZombieNavigator:GetMovePosition(destination)
 end
 
 function ZombieNavigator:ForceRepath()
-	self._nextRepathTime = 0
+	self._routeId = 0
+
+	local route = if self._routeKey then routeCache[self._routeKey] else nil
+	if not route then
+		return
+	end
+
+	local now = os.clock()
+	if now - route.LastForceAt < FORCE_REPATH_COOLDOWN then
+		return
+	end
+
+	route.LastForceAt = now
+	if now - route.LastComputedAt >= FORCE_REPATH_COOLDOWN then
+		route.NextRefreshAt = 0
+	else
+		route.NextRefreshAt = math.min(route.NextRefreshAt, route.LastComputedAt + FORCE_REPATH_COOLDOWN)
+	end
 end
 
 return ZombieNavigator

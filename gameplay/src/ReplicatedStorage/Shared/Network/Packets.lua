@@ -40,6 +40,14 @@ return ByteNet.defineNamespace("survival", function()
 			}),
 		}),
 
+		zombieHitReport = ByteNet.definePacket({
+			value = ByteNet.struct({
+				zombie = ByteNet.inst,
+				attackToken = ByteNet.uint32,
+				playerPosition = ByteNet.vec3,
+			}),
+		}),
+
 		weaponUpgradeRequest = ByteNet.definePacket({
 			value = ByteNet.struct({
 				weapon = ByteNet.string,

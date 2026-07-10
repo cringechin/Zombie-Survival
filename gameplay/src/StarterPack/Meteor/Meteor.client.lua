@@ -24,6 +24,18 @@ local previewPart = nil
 local previewTween = nil
 local getFlatAimDirection
 
+local function isLocalPlayerAlive()
+	if localPlayer:GetAttribute("IsDowned") == true then
+		return false
+	end
+
+	local character = localPlayer.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	return humanoid ~= nil and root ~= nil and humanoid.Health > 0
+end
+
 local function getMeteorLevel()
 	return localPlayer:GetAttribute("MeteorLevel") or 0
 end
@@ -191,6 +203,11 @@ tool.Unequipped:Connect(function()
 end)
 
 tool.Activated:Connect(function()
+	if not isLocalPlayerAlive() then
+		hidePreviewPart()
+		return
+	end
+
 	if getMeteorLevel() <= 0 then
 		return
 	end
@@ -220,6 +237,12 @@ tool.Activated:Connect(function()
 		direction = direction,
 		targetPosition = targetPosition or Vector3.zero,
 	})
+end)
+
+localPlayer:GetAttributeChangedSignal("IsDowned"):Connect(function()
+	if localPlayer:GetAttribute("IsDowned") == true then
+		hidePreviewPart()
+	end
 end)
 
 tool.Destroying:Connect(hidePreviewPart)

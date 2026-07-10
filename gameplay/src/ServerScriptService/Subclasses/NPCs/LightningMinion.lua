@@ -16,6 +16,7 @@ local function buildConfig(waveNumber)
 		Subclass = BASE_CONFIG.Subclass,
 		DisplayName = BASE_CONFIG.DisplayName,
 		AssetPath = BASE_CONFIG.AssetPath,
+		RigFallbackAssetPath = BASE_CONFIG.RigFallbackAssetPath,
 		Damage = BASE_CONFIG.Damage + math.floor(waveNumber / 5),
 		WalkSpeed = BASE_CONFIG.WalkSpeed + math.min(waveNumber * 0.08, 2.5),
 		Health = 45 + (waveNumber * 7),

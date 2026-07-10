@@ -107,7 +107,7 @@ local function BasicSurvivalHud()
 	end, {})
 
 	local currentWave = getCurrentWave(waveState)
-	local zombiesText = tostring(waveState.zombiesAlive)
+	local zombiesText = tostring(waveState.zombiesRemaining)
 
 	return e("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0),
